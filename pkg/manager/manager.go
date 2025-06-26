@@ -1,8 +1,8 @@
 package manager
 
 import (
-	"github.com/llm-inferno/inferno/pkg/core"
-	"github.com/llm-inferno/inferno/pkg/solver"
+	"github.com/llm-inferno/optimizer/pkg/core"
+	"github.com/llm-inferno/optimizer/pkg/solver"
 )
 
 type Manager struct {

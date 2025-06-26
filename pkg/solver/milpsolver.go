@@ -3,11 +3,11 @@ package solver
 import (
 	"fmt"
 
-	"github.com/llm-inferno/inferno/pkg/config"
-	"github.com/llm-inferno/inferno/pkg/core"
 	lpsolveConfig "github.com/llm-inferno/lpsolve/pkg/config"
 	lpsolve "github.com/llm-inferno/lpsolve/pkg/core"
 	lpsolveUtils "github.com/llm-inferno/lpsolve/pkg/utils"
+	"github.com/llm-inferno/optimizer/pkg/config"
+	"github.com/llm-inferno/optimizer/pkg/core"
 )
 
 type MILPSolver struct {
