@@ -93,11 +93,12 @@ type ServerData struct {
 
 // Specifications of a server
 type ServerSpec struct {
-	Name         string         `json:"name"`         // server name
-	Class        string         `json:"class"`        // service class name
-	Model        string         `json:"model"`        // model name
-	CurrentAlloc AllocationData `json:"currentAlloc"` // current allocation
-	DesiredAlloc AllocationData `json:"desiredAlloc"` // desired allocation
+	Name            string         `json:"name"`            // server name
+	Class           string         `json:"class"`           // service class name
+	Model           string         `json:"model"`           // model name
+	KeepAccelerator bool           `json:"keepAccelerator"` // option to not change accelerator
+	CurrentAlloc    AllocationData `json:"currentAlloc"`    // current allocation
+	DesiredAlloc    AllocationData `json:"desiredAlloc"`    // desired allocation
 }
 
 // Specifications of server load statistics

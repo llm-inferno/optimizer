@@ -11,6 +11,7 @@ type Server struct {
 	name             string
 	serviceClassName string
 	modelName        string
+	keepAccelerator  bool
 
 	// server load statistics
 	load *config.ServerLoadSpec
@@ -38,16 +39,18 @@ func NewServerFromSpec(spec *config.ServerSpec) *Server {
 		serviceClassName: svcName,
 		modelName:        spec.Model,
 		load:             &ld,
+		keepAccelerator:  spec.KeepAccelerator,
 		allAllocations:   map[string]*Allocation{},
 		curAllocation:    AllocationFromData(&spec.CurrentAlloc),
 		spec:             spec,
 	}
 }
 
-// Calculate allocations for all accelerators
+// Calculate allocations for a set of accelerators
 func (s *Server) Calculate(accelerators map[string]*Accelerator) {
+	candidateAccelerators := s.GetCandidateAccelerators(accelerators)
 	s.allAllocations = make(map[string]*Allocation)
-	for _, g := range accelerators {
+	for _, g := range candidateAccelerators {
 		if alloc := CreateAllocation(s.name, g.Name()); alloc != nil {
 			if s.curAllocation != nil {
 				penalty := s.curAllocation.TransitionPenalty(alloc)
@@ -56,6 +59,21 @@ func (s *Server) Calculate(accelerators map[string]*Accelerator) {
 			s.allAllocations[g.Name()] = alloc
 		}
 	}
+}
+
+// Create a subset of candidate accelerators for a server from a given set
+func (s *Server) GetCandidateAccelerators(accelerators map[string]*Accelerator) map[string]*Accelerator {
+	if s.keepAccelerator {
+		if s.curAllocation != nil && s.curAllocation.accelerator != "" {
+			accMap := make(map[string]*Accelerator)
+			curAccName := s.curAllocation.accelerator
+			if curAcc := accelerators[curAccName]; curAcc != nil {
+				accMap[curAccName] = curAcc
+			}
+			return accMap
+		}
+	}
+	return accelerators
 }
 
 func (s *Server) Name() string {
@@ -75,6 +93,10 @@ func (s *Server) Priority() int {
 
 func (s *Server) ModelName() string {
 	return s.modelName
+}
+
+func (s *Server) KeepAccelerator() bool {
+	return s.keepAccelerator
 }
 
 func (s *Server) Load() *config.ServerLoadSpec {
