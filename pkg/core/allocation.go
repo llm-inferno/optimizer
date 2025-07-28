@@ -51,7 +51,7 @@ func CreateAllocation(serverName string, gName string) *Allocation {
 	if server = GetServer(serverName); server == nil {
 		return nil
 	}
-	if load = server.Load(); load == nil || load.ArrivalRate <= 0 || load.AvgLength <= 0 {
+	if load = server.Load(); load == nil || load.ArrivalRate < 0 || load.AvgLength < 0 {
 		return nil
 	}
 
@@ -70,6 +70,23 @@ func CreateAllocation(serverName string, gName string) *Allocation {
 	}
 	if target = svc.ModelTarget(modelName); target == nil {
 		return nil
+	}
+
+	// handle zero traffic case
+	if load.ArrivalRate == 0 || load.AvgLength == 0 {
+
+		maxBatchSize := perf.MaxBatchSize
+		numReplicas := server.spec.MinNumReplicas
+		totalNumInstances := model.NumInstances(gName) * numReplicas
+		cost := acc.Cost() * float32(totalNumInstances)
+		servTime := perf.Alpha + perf.Beta
+		minServTime := perf.Alpha + perf.Beta*float32(maxBatchSize)
+		maxArrvRatePerReplica := float32(maxBatchSize) / minServTime
+
+		alloc := &Allocation{accelerator: gName, numReplicas: numReplicas, batchSize: maxBatchSize,
+			cost: cost, servTime: servTime, waitTime: 0, rho: 0, maxArrvRatePerReplica: maxArrvRatePerReplica}
+		alloc.SetValue(alloc.cost)
+		return alloc
 	}
 
 	// calculate max batch size (N) based on average request length (K)
@@ -142,6 +159,7 @@ func CreateAllocation(serverName string, gName string) *Allocation {
 		totalLambda = throughputLimit
 	}
 	numReplicas := int(math.Ceil(float64(totalLambda) / float64(lambdaStar)))
+	numReplicas = max(numReplicas, server.spec.MinNumReplicas)
 
 	// calculate cost
 	totalNumInstances := model.NumInstances(gName) * numReplicas

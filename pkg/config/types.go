@@ -97,6 +97,7 @@ type ServerSpec struct {
 	Class           string         `json:"class"`           // service class name
 	Model           string         `json:"model"`           // model name
 	KeepAccelerator bool           `json:"keepAccelerator"` // option to not change accelerator
+	MinNumReplicas  int            `json:"minNumReplicas"`  // minimum number of replicas
 	CurrentAlloc    AllocationData `json:"currentAlloc"`    // current allocation
 	DesiredAlloc    AllocationData `json:"desiredAlloc"`    // desired allocation
 }
