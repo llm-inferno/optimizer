@@ -74,24 +74,19 @@ func CreateAllocation(serverName string, gName string) *Allocation {
 
 	// handle zero traffic case
 	if load.ArrivalRate == 0 || load.AvgLength == 0 {
-
-		maxBatchSize := perf.MaxBatchSize
-		numReplicas := server.spec.MinNumReplicas
-		totalNumInstances := model.NumInstances(gName) * numReplicas
-		cost := acc.Cost() * float32(totalNumInstances)
-		servTime := perf.Alpha + perf.Beta
-		minServTime := perf.Alpha + perf.Beta*float32(maxBatchSize)
-		maxArrvRatePerReplica := float32(maxBatchSize) / minServTime
-
-		alloc := &Allocation{accelerator: gName, numReplicas: numReplicas, batchSize: maxBatchSize,
-			cost: cost, servTime: servTime, waitTime: 0, rho: 0, maxArrvRatePerReplica: maxArrvRatePerReplica}
-		alloc.SetValue(alloc.cost)
-		return alloc
+		return zeroLoadAllocation(server, model, acc, perf)
 	}
 
 	// calculate max batch size (N) based on average request length (K)
 	K := load.AvgLength
-	N := max(perf.MaxBatchSize*perf.AtTokens/K, 1)
+
+	// use maxBatchSize from configured value or scaled performance data
+	var N int
+	if server.maxBatchSize > 0 {
+		N = server.maxBatchSize
+	} else {
+		N = max(perf.MaxBatchSize*perf.AtTokens/K, 1)
+	}
 	maxQueue := N * config.MaxQueueToBatchRatio
 
 	// distribution of token time assumed deterministic
@@ -159,7 +154,7 @@ func CreateAllocation(serverName string, gName string) *Allocation {
 		totalLambda = throughputLimit
 	}
 	numReplicas := int(math.Ceil(float64(totalLambda) / float64(lambdaStar)))
-	numReplicas = max(numReplicas, server.spec.MinNumReplicas)
+	numReplicas = max(numReplicas, server.minNumReplicas)
 
 	// calculate cost
 	totalNumInstances := model.NumInstances(gName) * numReplicas
@@ -247,8 +242,21 @@ func CreateAllocationUsingGGm(serverName string, gName string) *Allocation {
 		return nil
 	}
 
+	// handle zero traffic case
+	if load.ArrivalRate == 0 || load.AvgLength == 0 {
+		return zeroLoadAllocation(server, model, acc, perf)
+	}
+
+	// calculate max batch size (N) based on average request length (K)
 	K := load.AvgLength
-	N := max(perf.MaxBatchSize*perf.AtTokens/K, 1)
+
+	// use maxBatchSize from configured value or scaled performance data
+	var N int
+	if server.maxBatchSize > 0 {
+		N = server.maxBatchSize
+	} else {
+		N = max(perf.MaxBatchSize*perf.AtTokens/K, 1)
+	}
 
 	servTime := perf.Alpha + perf.Beta*float32(N)
 	if target.ITL > 0 && servTime > target.ITL {
@@ -259,7 +267,7 @@ func CreateAllocationUsingGGm(serverName string, gName string) *Allocation {
 	gamma := ((load.ArrivalCOV * load.ArrivalCOV) + (load.ServiceCOV * load.ServiceCOV)) / 2
 	if target.ITL > 0 && target.TTW > 0 {
 		waitTimeLimit := target.TTW / config.SLOMargin
-		xStar := float32(perf.MaxBatchSize) * waitTimeLimit / (float32(K) * servTime * gamma)
+		xStar := float32(N) * waitTimeLimit / (float32(K) * servTime * gamma)
 		rhoStar := xStar / (1 + xStar)
 		lambdaStar := rhoStar / (float32(K) * servTime)
 		numReplicas = int(math.Ceil(float64(load.ArrivalRate) / (float64(lambdaStar) * 60 * 1000)))
@@ -281,7 +289,7 @@ func CreateAllocationUsingGGm(serverName string, gName string) *Allocation {
 
 	rho := load.ArrivalRate * float32(K) * servTime / (float32(numReplicas) * 60 * 1000)
 	x := rho / (1 - rho)
-	wait := (float32(K) * servTime) * gamma * x / float32(perf.MaxBatchSize)
+	wait := (float32(K) * servTime) * gamma * x / float32(N)
 
 	alloc := &Allocation{accelerator: gName, numReplicas: numReplicas, batchSize: N,
 		cost: cost, servTime: servTime, waitTime: wait, rho: rho}
@@ -352,6 +360,26 @@ func (a *Allocation) SetValue(value float32) {
 
 func (a *Allocation) Value() float32 {
 	return a.value
+}
+
+// Allocation in case of zeroload
+func zeroLoadAllocation(server *Server, model *Model, acc *Accelerator, perf *config.ModelAcceleratorPerfData) *Allocation {
+	maxBatchSize := perf.MaxBatchSize
+	if server.maxBatchSize > 0 {
+		maxBatchSize = server.maxBatchSize
+	}
+	numReplicas := server.minNumReplicas
+	gName := acc.Name()
+	totalNumInstances := model.NumInstances(gName) * numReplicas
+	cost := acc.Cost() * float32(totalNumInstances)
+	servTime := perf.Alpha + perf.Beta
+	minServTime := perf.Alpha + perf.Beta*float32(maxBatchSize)
+	maxArrvRatePerReplica := float32(maxBatchSize) / minServTime
+
+	alloc := &Allocation{accelerator: gName, numReplicas: numReplicas, batchSize: maxBatchSize,
+		cost: cost, servTime: servTime, waitTime: 0, rho: 0, maxArrvRatePerReplica: maxArrvRatePerReplica}
+	alloc.SetValue(alloc.cost)
+	return alloc
 }
 
 // Calculate penalty for transitioning from this allocation (a) to another allocation (b)

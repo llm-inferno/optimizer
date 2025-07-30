@@ -12,6 +12,8 @@ type Server struct {
 	serviceClassName string
 	modelName        string
 	keepAccelerator  bool
+	minNumReplicas   int
+	maxBatchSize     int
 
 	// server load statistics
 	load *config.ServerLoadSpec
@@ -40,9 +42,12 @@ func NewServerFromSpec(spec *config.ServerSpec) *Server {
 		modelName:        spec.Model,
 		load:             &ld,
 		keepAccelerator:  spec.KeepAccelerator,
-		allAllocations:   map[string]*Allocation{},
-		curAllocation:    AllocationFromData(&spec.CurrentAlloc),
-		spec:             spec,
+		minNumReplicas:   spec.MinNumReplicas,
+		maxBatchSize:     spec.MaxBatchSize,
+
+		allAllocations: map[string]*Allocation{},
+		curAllocation:  AllocationFromData(&spec.CurrentAlloc),
+		spec:           spec,
 	}
 }
 

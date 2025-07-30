@@ -153,7 +153,7 @@ The following data is needed by the Optimizer (Declarations described [types](..
    - `slo-ttw` target SLO for request waiting (queueing) time (msec)
    - `slo-tps` target SLO for throughput (tokens/sec)
 
-1. **Server data**: For all inference servers, the name of the server, the model and service class it serves (currently, assuming a single model and service class per server), an option to not change the accelerator, a minimum number of replicas, and current and desired allocations. The current allocation reflects the state of the server and the desired allocation is provided by the Optimizer (as a solution to an optimization problem). An allocation includes accelerator, number of replicas, maximum batch size, cost, and observed or anticipated average ITL and waiting time, as well as load data. The load data includes statistical metrics about request arrivals and message lengths (number of tokens). An example follows.
+1. **Server data**: For all inference servers, the name of the server, the model and service class it serves (currently, assuming a single model and service class per server), an option to not change the accelerator, a minimum number of replicas, a maximum batch size, and current and desired allocations. The current allocation reflects the state of the server and the desired allocation is provided by the Optimizer (as a solution to an optimization problem). An allocation includes accelerator, number of replicas, maximum batch size, cost, and observed or anticipated average ITL and waiting time, as well as load data. The load data includes statistical metrics about request arrivals and message lengths (number of tokens). An example follows.
 
     ```json
     {
