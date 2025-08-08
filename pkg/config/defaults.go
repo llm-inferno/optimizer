@@ -1,6 +1,8 @@
 package config
 
-import "math"
+import (
+	"math"
+)
 
 /**
  * Parameters
@@ -27,8 +29,8 @@ const DefaultServiceClassName string = "Free"
 // default priority of a service class
 const DefaultServiceClassPriority int = 0
 
-// weight factor for class priority used in greedy limited solver
-var PriorityWeightFactor float32 = 1.0
+// default option for allocation under saturated condition
+var DefaultSaturatedAllocationPolicy SaturatedAllocationPolicy = None
 
 // fraction of maximum server throughput to provide stability (running this fraction below the maximum)
 var StabilitySafetyFraction float32 = 0.1

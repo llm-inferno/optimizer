@@ -42,6 +42,8 @@ func NewMILPSolver(optimizerSpec *config.OptimizerSpec) *MILPSolver {
 	}
 }
 
+// TODO: support priorities when allocating accelerators
+
 func (v *MILPSolver) Solve() error {
 	v.preProcess()
 

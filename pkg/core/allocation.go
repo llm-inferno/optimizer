@@ -297,6 +297,104 @@ func CreateAllocationUsingGGm(serverName string, gName string) *Allocation {
 	return alloc
 }
 
+// Change number of replicas in allocation and re-evaluate performance, assuming total load on a server
+func (a *Allocation) AdjustNumReplicas(numReplicas int, server *Server, model *Model) error {
+	if a.numReplicas < 1 || a.batchSize < 1 {
+		return fmt.Errorf("invalid current numReplicas (%d) or batchSize (%d)", a.numReplicas, a.batchSize)
+	}
+
+	// get load statistics
+	var (
+		K           int     // average number of tokens
+		totalLambda float32 // total arrival rate per msec
+	)
+	if load := server.Load(); load != nil {
+		K = load.AvgLength
+		totalLambda = load.ArrivalRate / 60 / 1000
+	} else {
+		return fmt.Errorf("missing server load spec for server %s", server.name)
+	}
+
+	// check if throughtput constrained
+	var target *Target
+	if svClass := GetServiceClass(server.ServiceClassName()); svClass != nil {
+		if target = svClass.ModelTarget(model.name); target != nil {
+			if target.TPS > 0 && K > 0 {
+				totalLambda = target.TPS / (1000 * float32(K))
+			}
+		}
+	}
+
+	// get performance parameters
+	var (
+		alpha float32
+		beta  float32
+	)
+	if perf := model.PerfData(a.accelerator); perf != nil {
+		alpha = perf.Alpha
+		beta = perf.Beta
+	} else {
+		return fmt.Errorf("missing performance data for model %s on accelerator %s", model.Name(), a.accelerator)
+	}
+
+	// calculate queue statistics
+	N := a.batchSize
+	maxQueue := N * config.MaxQueueToBatchRatio
+	servRate := make([]float32, N)
+	for n := 1; n <= N; n++ {
+		servTime := alpha + beta*float32(n)
+		servRate[n-1] = float32(n) / (servTime * float32(K))
+	}
+
+	// solve queueing model
+	queueModel = queue.NewMM1ModelStateDependent(maxQueue, servRate)
+	lambda := totalLambda / float32(numReplicas)
+	queueModel.Solve(lambda, 1)
+
+	// set allocation fields
+	a.rho = queueModel.GetRho()
+	a.servTime = queueModel.GetAvgServTime() / float32(K)
+	a.waitTime = queueModel.GetAvgWaitTime()
+
+	// adjust cost and value
+	factor := float32(numReplicas) / float32(a.numReplicas)
+	a.cost *= factor
+	a.value *= factor
+
+	// determine max rate to achieve SLOs
+	lambdaMin := servRate[0] * config.Delta
+	lambdaMax := servRate[N-1] * (1 - config.Delta)
+
+	servTimeLimit := float32(K) * target.ITL
+	waitTimeLimit := target.TTW / config.SLOMargin
+
+	lambdaStarService := lambdaMax
+	if target.ITL > 0 {
+		if lambda, _, err := utils.BinarySearch(lambdaMin, lambdaMax, servTimeLimit, EvalServTime); err == nil {
+			lambdaStarService = lambda
+		}
+	}
+
+	lambdaStarWait := lambdaMax
+	if target.TTW > 0 {
+		if lambda, _, err := utils.BinarySearch(lambdaMin, lambdaMax, waitTimeLimit, EvalWaitingTime); err == nil {
+			lambdaStarWait = lambda
+		}
+	}
+
+	lambdaStarThroughput := lambdaMax
+	if target.TPS > 0 {
+		lambdaStarThroughput = lambdaMax * (1 - config.StabilitySafetyFraction)
+	}
+
+	lambdaStar := float32(math.Min(float64(lambdaStarService), float64(lambdaStarWait)))
+	lambdaStar = float32(math.Min(float64(lambdaStar), float64(lambdaStarThroughput)))
+	a.maxArrvRatePerReplica = lambdaStar
+
+	a.numReplicas = numReplicas
+	return nil
+}
+
 func (a *Allocation) Scale(serverName string) (alloc *Allocation, inc int) {
 	var (
 		acc    *Accelerator
@@ -349,8 +447,36 @@ func (a *Allocation) NumReplicas() int {
 	return a.numReplicas
 }
 
+func (a *Allocation) SetNumReplicas(n int) {
+	a.numReplicas = n
+}
+
+func (a *Allocation) MaxBatchSize() int {
+	return a.batchSize
+}
+
+func (a *Allocation) SetMaxBatchSize(batchSize int) {
+	a.batchSize = batchSize
+}
+
 func (a *Allocation) MaxArrvRatePerReplica() float32 {
 	return a.maxArrvRatePerReplica
+}
+
+func (a *Allocation) MaxRPM() float32 {
+	return a.maxArrvRatePerReplica * 1000 * 60
+}
+
+func (a *Allocation) Cost() float32 {
+	return a.cost
+}
+
+func (a *Allocation) SetCost(cost float32) {
+	a.cost = cost
+}
+
+func (a *Allocation) Value() float32 {
+	return a.value
 }
 
 // Set the value for this allocation (may depend on cost, performance, ...)
@@ -358,8 +484,8 @@ func (a *Allocation) SetValue(value float32) {
 	a.value = value
 }
 
-func (a *Allocation) Value() float32 {
-	return a.value
+func (a *Allocation) Saturated(totalRate float32) bool {
+	return totalRate > float32(a.numReplicas)*a.MaxRPM()
 }
 
 // Allocation in case of zeroload
@@ -432,8 +558,8 @@ func AllocationFromData(data *config.AllocationData) *Allocation {
 }
 
 func (a *Allocation) String() string {
-	return fmt.Sprintf("{acc=%s; num=%d; maxBatch=%d; cost=%v, val=%v, servTime=%v, waitTime=%v, rho=%v}",
-		a.accelerator, a.numReplicas, a.batchSize, a.cost, a.value, a.servTime, a.waitTime, a.rho)
+	return fmt.Sprintf("{acc=%s; num=%d; maxBatch=%d; cost=%v, val=%v, servTime=%v, waitTime=%v, rho=%v, maxRPM=%v}",
+		a.accelerator, a.numReplicas, a.batchSize, a.cost, a.value, a.servTime, a.waitTime, a.rho, a.MaxRPM())
 }
 
 // Orchestration difference between two allocations

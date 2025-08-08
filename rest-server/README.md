@@ -205,7 +205,8 @@ The following data is needed by the Optimizer (Declarations described [types](..
             "unlimited": true,
             "heterogeneous": false,
             "milpSolver" : false,
-            "useCplex" : false
+            "useCplex" : false,
+            "saturationPolicy" : "None"
         }
     }
     ```
@@ -216,6 +217,12 @@ The following data is needed by the Optimizer (Declarations described [types](..
     - `heterogeneous`: Whether servers accomodate heterogeneous accelerators for their replicas, e.g. five replicas of a server, two of which run on A100 and the other three run on G2.
     - `milpSolver`: Option to use an MILP (mixed Integer Linear Programming) problem solver, or rely on a (default) greedy algorithm. Currently, the provided solvers are: lpSolve and CPLEX.
     - `useCplex`: If using an MILP solver, use CPLEX.
+    - `saturationPolicy`: Set an allocation policy under saturated condition.
+
+      - ***None***: no additional allocation beyond satisfying SLOs
+      - ***PriorityExhaustive***: allocating exhaustively to servers in priority ordering
+      - ***PriorityRoundRobin***: allocating in round-robin fashion within priority groups
+      - ***RoundRobin***: allocating in round-robin fashion across all servers
 
 The output of the Optimizer is an Allocation Solution, in addition to updating the desired allocation of all servers.
 

@@ -141,6 +141,10 @@ func (s *Server) Spec() *config.ServerSpec {
 	return s.spec
 }
 
+func (s *Server) Saturated() bool {
+	return s.allocation != nil && s.load != nil && s.allocation.Saturated(s.load.ArrivalRate)
+}
+
 func (s *Server) UpdateDesiredAlloc() {
 	if s.allocation != nil {
 		s.spec.DesiredAlloc = *s.allocation.AllocationData()
