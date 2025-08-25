@@ -172,13 +172,8 @@ func (s *System) RemoveServer(name string) error {
 
 // Set service classes from spec
 func (s *System) SetServiceClassesFromSpec(d *config.ServiceClassData) {
-	for _, t := range d.Spec {
-		name := t.Name
-		if _, exists := s.serviceClasses[name]; !exists {
-			s.serviceClasses[name] = NewServiceClass(name, t.Priority)
-		}
-		svc := s.serviceClasses[name]
-		svc.SetTargetFromSpec(&t)
+	for _, scSpec := range d.Spec {
+		s.serviceClasses[scSpec.Name] = NewServiceClassFromSpec(&scSpec)
 	}
 }
 

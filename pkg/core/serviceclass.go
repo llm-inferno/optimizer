@@ -26,7 +26,7 @@ func (t *Target) String() string {
 }
 
 func NewServiceClass(name string, priority int) *ServiceClass {
-	if priority < 0 {
+	if priority < config.DefaultHighPriority || priority > config.DefaultLowPriority {
 		priority = config.DefaultServiceClassPriority
 	}
 	return &ServiceClass{
@@ -36,15 +36,12 @@ func NewServiceClass(name string, priority int) *ServiceClass {
 	}
 }
 
-// set target SLOs for a model in a service class (replace if already exists)
-func (c *ServiceClass) SetTargetFromSpec(spec *config.ServiceClassSpec) {
-	if spec.Name == c.name {
-		c.targets[spec.Model] = &Target{
-			ITL: spec.SLO_ITL,
-			TTW: spec.SLO_TTW,
-			TPS: spec.SLO_TPS,
-		}
+func NewServiceClassFromSpec(spec *config.ServiceClassSpec) *ServiceClass {
+	svc := NewServiceClass(spec.Name, spec.Priority)
+	for _, modelTarget := range spec.ModelTargets {
+		svc.AddModelTarget(&modelTarget)
 	}
+	return svc
 }
 
 func (c *ServiceClass) Name() string {
@@ -59,25 +56,50 @@ func (c *ServiceClass) ModelTarget(modelName string) *Target {
 	return c.targets[modelName]
 }
 
+// update model targets from  service class specification (replace if already exists)
+func (c *ServiceClass) UpdateModelTargets(spec *config.ServiceClassSpec) bool {
+	if spec.Name != c.name || spec.Priority != c.priority {
+		return false
+	}
+	for _, modelTarget := range spec.ModelTargets {
+		c.AddModelTarget(&modelTarget)
+	}
+	return true
+}
+
+// add a model target to the service class (replace if already exists)
+func (c *ServiceClass) AddModelTarget(spec *config.ModelTarget) *Target {
+	modelName := spec.Model
+	target := &Target{
+		ITL: spec.SLO_ITL,
+		TTW: spec.SLO_TTW,
+		TPS: spec.SLO_TPS,
+	}
+	c.targets[modelName] = target
+	return target
+}
+
 func (c *ServiceClass) RemoveModelTarget(modelName string) {
 	delete(c.targets, modelName)
 }
 
-func (c *ServiceClass) Spec() []config.ServiceClassSpec {
-	specs := make([]config.ServiceClassSpec, len(c.targets))
+func (c *ServiceClass) Spec() config.ServiceClassSpec {
+	modelTargets := make([]config.ModelTarget, len(c.targets))
 	i := 0
 	for modelName, target := range c.targets {
-		specs[i] = config.ServiceClassSpec{
-			Name:     c.name,
-			Priority: c.priority,
-			Model:    modelName,
-			SLO_ITL:  target.ITL,
-			SLO_TTW:  target.TTW,
-			SLO_TPS:  target.TPS,
+		modelTargets[i] = config.ModelTarget{
+			Model:   modelName,
+			SLO_ITL: target.ITL,
+			SLO_TTW: target.TTW,
+			SLO_TPS: target.TPS,
 		}
 		i++
 	}
-	return specs
+	return config.ServiceClassSpec{
+		Name:         c.name,
+		Priority:     c.priority,
+		ModelTargets: modelTargets,
+	}
 }
 
 func (c *ServiceClass) String() string {
