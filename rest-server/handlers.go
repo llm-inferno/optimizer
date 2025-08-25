@@ -183,7 +183,7 @@ func getServiceClasses(c *gin.Context) {
 		Spec: []config.ServiceClassSpec{},
 	}
 	for _, svc := range svcMap {
-		svcs.Spec = append(svcs.Spec, svc.Spec()...)
+		svcs.Spec = append(svcs.Spec, svc.Spec())
 	}
 	c.IndentedJSON(http.StatusOK, svcs)
 }
@@ -224,6 +224,24 @@ func removeServiceClass(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, svc.Spec())
 }
 
+func addServiceClassModelTargets(c *gin.Context) {
+	var svcSpec config.ServiceClassSpec
+	if err := c.BindJSON(&svcSpec); err != nil {
+		return
+	}
+	svcName := svcSpec.Name
+	svc := system.ServiceClass(svcName)
+	if svc == nil {
+		c.IndentedJSON(http.StatusNotFound, "service class "+svcName+" not found")
+		return
+	}
+	if !svc.UpdateModelTargets(&svcSpec) {
+		c.IndentedJSON(http.StatusBadRequest, "inconsistent specs: svcName="+svcName+" ; svcPrio="+strconv.Itoa(svcSpec.Priority))
+		return
+	}
+	c.IndentedJSON(http.StatusOK, svc.Spec())
+}
+
 func getServiceClassModelTarget(c *gin.Context) {
 	name := c.Param("name")
 	model := c.Param("model")
@@ -237,27 +255,12 @@ func getServiceClassModelTarget(c *gin.Context) {
 		c.IndentedJSON(http.StatusNotFound, gin.H{"message": "model " + model + " not found"})
 		return
 	}
-	c.IndentedJSON(http.StatusOK, config.ServiceClassSpec{
-		Name:    name,
+	c.IndentedJSON(http.StatusOK, config.ModelTarget{
 		Model:   model,
 		SLO_ITL: target.ITL,
 		SLO_TTW: target.TTW,
 		SLO_TPS: target.TPS,
 	})
-}
-
-func addServiceClassModelTarget(c *gin.Context) {
-	var targetSpec config.ServiceClassSpec
-	if err := c.BindJSON(&targetSpec); err != nil {
-		return
-	}
-	svcName := targetSpec.Name
-	if system.ServiceClass(svcName) == nil {
-		system.AddServiceClass(svcName, targetSpec.Priority)
-	}
-	svc := system.ServiceClass(svcName)
-	svc.SetTargetFromSpec(&targetSpec)
-	c.IndentedJSON(http.StatusOK, targetSpec)
 }
 
 func removeServiceClassModelTarget(c *gin.Context) {
@@ -274,8 +277,7 @@ func removeServiceClassModelTarget(c *gin.Context) {
 		return
 	}
 	svc.RemoveModelTarget(model)
-	c.IndentedJSON(http.StatusOK, config.ServiceClassSpec{
-		Name:    name,
+	c.IndentedJSON(http.StatusOK, config.ModelTarget{
 		Model:   model,
 		SLO_ITL: target.ITL,
 		SLO_TTW: target.TTW,

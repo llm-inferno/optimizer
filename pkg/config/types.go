@@ -76,14 +76,19 @@ type ServiceClassData struct {
 	Spec []ServiceClassSpec `json:"serviceClasses"`
 }
 
-// Specifications of SLO data for a combination of a service class and a model
+// Specification of a service class
 type ServiceClassSpec struct {
-	Name     string  `json:"name"`     // service class name
-	Model    string  `json:"model"`    // model name
-	Priority int     `json:"priority"` // (non-negative) priority (lower value is higher priority)
-	SLO_ITL  float32 `json:"slo-itl"`  // inter-token latency (msec)
-	SLO_TTW  float32 `json:"slo-ttw"`  // request waiting time (msec)
-	SLO_TPS  float32 `json:"slo-tps"`  // throughput (tokens/sec)
+	Name         string        `json:"name"`         // service class name
+	Priority     int           `json:"priority"`     // [1,100] priority (lower value is higher priority)
+	ModelTargets []ModelTarget `json:"modelTargets"` // target SLOs for models
+}
+
+// Specification of SLO targets for a model
+type ModelTarget struct {
+	Model   string  `json:"model"`   // model name
+	SLO_ITL float32 `json:"slo-itl"` // inter-token latency (msec)
+	SLO_TTW float32 `json:"slo-ttw"` // request waiting time (msec)
+	SLO_TPS float32 `json:"slo-tps"` // throughput (tokens/sec)
 }
 
 // Data related to a Server

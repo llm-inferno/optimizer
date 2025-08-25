@@ -118,40 +118,54 @@ The following data is needed by the Optimizer (Declarations described [types](..
         "serviceClasses": [
             {
                 "name": "Premium",
-                "model": "granite_13b",
                 "priority": 1,
-                "slo-itl": 40,
-                "slo-ttw": 500
-            },
-            {
-                "name": "Premium",
-                "model": "llama_70b",
-                "priority": 1,
-                "slo-itl": 80,
-                "slo-ttw": 500
+                "modelTargets": [
+                    {
+                        "model": "granite_13b",
+                        "slo-itl": 40,
+                        "slo-ttw": 500
+                    },
+                    {
+                        "model": "llama_70b",
+                        "slo-itl": 80,
+                        "slo-ttw": 500
+                    }
+                ]
             },
             {
                 "name": "Bronze",
-                "model": "granite_13b",
                 "priority": 2,
-                "slo-itl": 80,
-                "slo-ttw": 1000
+                "modelTargets": [
+                    {
+                        "model": "granite_13b",
+                        "slo-itl": 80,
+                        "slo-ttw": 1000
+                    }
+                ]
             },
             {
                 "name": "Batch2K",
-                "model": "mixtral_8_7b",
                 "priority": 4,
-                "slo-tps": 2000
-            },
+                "modelTargets": [
+                    {
+                        "model": "mixtral_8_7b",
+                        "slo-tps": 2000
+                    }
+                ]
+            }
         ]
     }
     ```
 
     The service class specification includes
 
-   - `slo-itl`: target SLO for ITL (msec)
-   - `slo-ttw` target SLO for request waiting (queueing) time (msec)
-   - `slo-tps` target SLO for throughput (tokens/sec)
+    - `priority`: an integer between 1 (highest priority) and 100 (lowest priority) - if unspecified, lowest priority is assumed
+    - `modelTargets`: target SLOs for models
+
+      - `name`: name of model
+      - `slo-itl`: target SLO for ITL (msec)
+      - `slo-ttw` target SLO for request waiting (queueing) time (msec)
+      - `slo-tps` target SLO for throughput (tokens/sec)
 
 1. **Server data**: For all inference servers, the name of the server, the model and service class it serves (currently, assuming a single model and service class per server), an option to not change the accelerator, a minimum number of replicas, a maximum batch size, and current and desired allocations. The current allocation reflects the state of the server and the desired allocation is provided by the Optimizer (as a solution to an optimization problem). An allocation includes accelerator, number of replicas, maximum batch size, cost, and observed or anticipated average ITL and waiting time, as well as load data. The load data includes statistical metrics about request arrivals and message lengths (number of tokens). An example follows.
 
@@ -274,13 +288,13 @@ The output of the Optimizer is an Allocation Solution, in addition to updating t
 | **Service class data** | | | | |
 | /setServiceClasses | POST | ServiceClassData |  | set data for service classes |
 | /getServiceClasses | GET |  | ServiceClassData | get data for all service classes |
-| /getServiceClass | GET | name | ServiceClassData | get data for a service class |
-| /addServiceClass | GET | name/priority |  | add a service class by name |
-| /removeServiceClass | GET | name |  | remove the data of a service class |
+| /getServiceClass | GET | name | ServiceClassSpec | get data for a service class |
+| /addServiceClass | GET | name/priority | ServiceClassSpec | add a service class by name |
+| /removeServiceClass | GET | name | ServiceClassSpec | remove the data of a service class |
 | **Service class targets** | | | | |
-| /getServiceClassModelTarget | GET |  service class name / model name | ServiceClassSpec | get the SLO targets for a service class and model pair |
-| /addServiceClassModelTarget | POST |  ServiceClassSpec |  | add SLO targets for a service class and model pair |
-| /removeServiceClassModelTarget | GET |  service class name / model name |  | remove the SLO targets for a service class and model pair |
+| /addServiceClassModelTargets | POST | ServiceClassSpec | ServiceClassSpec | add model targets to a service class |
+| /getServiceClassModelTarget | GET |  service class name / model name | ModelTarget | get the SLO targets for a service class and model pair |
+| /removeServiceClassModelTarget | GET |  service class name / model name | ModelTarget | remove the SLO targets for a service class and model pair |
 | **Server data** | | | | |
 | /setServers | POST | ServerData |  | set data for servers |
 | /getServers | GET |  | ServerData | get data for all servers |
