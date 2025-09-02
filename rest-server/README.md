@@ -216,10 +216,11 @@ The following data is needed by the Optimizer (Declarations described [types](..
     ```json
     {
         "optimizer": {
-            "unlimited": true,
+            "unlimited": false,
             "heterogeneous": false,
             "milpSolver" : false,
             "useCplex" : false,
+            "delayedBestEffort": false,
             "saturationPolicy" : "None"
         }
     }
@@ -231,6 +232,7 @@ The following data is needed by the Optimizer (Declarations described [types](..
     - `heterogeneous`: Whether servers accomodate heterogeneous accelerators for their replicas, e.g. five replicas of a server, two of which run on A100 and the other three run on G2.
     - `milpSolver`: Option to use an MILP (mixed Integer Linear Programming) problem solver, or rely on a (default) greedy algorithm. Currently, the provided solvers are: lpSolve and CPLEX.
     - `useCplex`: If using an MILP solver, use CPLEX.
+    - `delayedBestEffort`: Delay best effort allocation after attempting allocation to all priority groups.
     - `saturationPolicy`: Set an allocation policy under saturated condition.
 
       - ***None***: no additional allocation beyond satisfying SLOs

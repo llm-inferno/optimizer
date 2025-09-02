@@ -28,6 +28,9 @@ func (e *serverEntry) String() string {
 	return b.String()
 }
 
+// sorting function for server entries
+type ServerEntriesOrder func(a, b *serverEntry) int
+
 // Find optimal allocations using greedy algorithm, assuming limited accelerator capacity
 func (s *Solver) SolveGreedy() {
 
@@ -83,9 +86,29 @@ func (s *Solver) SolveGreedy() {
 	// sort server entries
 	slices.SortFunc(entries, orderFunc)
 
-	// keep track of unallocated servers, will process later
-	unallocatedServers := make([]*serverEntry, 0)
+	// allocate
+	if s.optimizerSpec.DelayedBestEffort {
+		// allocate to all servers
+		unallocated := allocate(entries, available, orderFunc)
+		// best effort allocation to all remaining servers
+		bestEffort(unallocated, available, s.optimizerSpec.SaturationPolicy)
+	} else {
+		groupEntries := makePriorityGroups(entries)
+		for _, group := range groupEntries {
+			// allocate to servers in priority group
+			unallocated := allocate(group, available, orderFunc)
+			// best effort allocation to servers in priority group
+			bestEffort(unallocated, available, s.optimizerSpec.SaturationPolicy)
+		}
+	}
+}
 
+// allocate, satisfying SLO requirements, returning servers that did not receive any allocation
+func allocate(entries []*serverEntry,
+	available map[string]int,
+	orderFunc ServerEntriesOrder) (unallocatedEntries []*serverEntry) {
+
+	unallocatedEntries = make([]*serverEntry, 0)
 	// start allocation greedily, in order
 	for len(entries) > 0 {
 		// pick top entry and remove from list
@@ -125,7 +148,7 @@ func (s *Solver) SolveGreedy() {
 				top.delta = top.allocations[top.curIndex+1].Value() - top.allocations[top.curIndex].Value()
 			} else if top.curIndex == len(top.allocations) {
 				// no more allocations, could not satisfy any, add server to unallocated list
-				unallocatedServers = append(unallocatedServers, top)
+				unallocatedEntries = append(unallocatedEntries, top)
 				continue
 			} else {
 				// last allocation, set large delta value
@@ -136,22 +159,36 @@ func (s *Solver) SolveGreedy() {
 			entries = slices.Insert(entries, i, top)
 		}
 	}
+	return unallocatedEntries
+}
 
-	// process unallocated servers based on saturation policy
-	switch config.SaturatedAllocationPolicyEnum(s.optimizerSpec.SaturationPolicy) {
+// give best effort allocation to unallocated servers according to saturation policy
+func bestEffort(unallocatedServers []*serverEntry, available map[string]int, policy string) {
+	switch config.SaturatedAllocationPolicyEnum(policy) {
+
+	// allocate exhaustively to servers in priority ordering
 	case config.PriorityExhaustive:
-		processUnallocatedServers(unallocatedServers, available)
+		allocateMaximally(unallocatedServers, available)
+
+	// allocate in round-robin fashion within priority groups
 	case config.PriorityRoundRobin:
-		processGroupsOfUnallocatedServers(unallocatedServers, available)
+		priorityGroups := makePriorityGroups(unallocatedServers)
+		for _, group := range priorityGroups {
+			allocateEqually(group, available)
+		}
+
+	// allocate in round-robin fashion across all servers
 	case config.RoundRobin:
-		processUnallocatedServerGroup(unallocatedServers, available)
+		allocateEqually(unallocatedServers, available)
+
+	// do not allocate beyond satisfying SLOs
 	case config.None:
 	}
 }
 
 // Allocate remaining accelerators among unallocated servers
 //   - priority ordering: one server at a time exhaustively, until no resources to satisfy requirements
-func processUnallocatedServers(serverEntries []*serverEntry, available map[string]int) {
+func allocateMaximally(serverEntries []*serverEntry, available map[string]int) {
 	// fmt.Println("Unallocated server entries: ", serverEntries)
 	for _, entry := range serverEntries {
 		for _, alloc := range entry.allocations {
@@ -182,27 +219,6 @@ func processUnallocatedServers(serverEntries []*serverEntry, available map[strin
 	}
 }
 
-// Allocate remaining accelerators among unallocated servers based on priorities
-//   - priority grouping: one group of servers with same priority at a time
-//   - round-robin within the group, until no resources to satisfy requirements
-func processGroupsOfUnallocatedServers(serverEntries []*serverEntry, available map[string]int) {
-	// fmt.Println("Unallocated server entries: ", serverEntries)
-
-	// make groups of same priority servers, then process each group
-	i := 0
-	for i < len(serverEntries) {
-		group := make([]*serverEntry, 0)
-		group = append(group, serverEntries[i])
-		groupPriority := serverEntries[i].priority
-		i++
-		for i < len(serverEntries) && serverEntries[i].priority == groupPriority {
-			group = append(group, serverEntries[i])
-			i++
-		}
-		processUnallocatedServerGroup(group, available)
-	}
-}
-
 type serverAllocationTicket struct {
 	entry  *serverEntry
 	active bool // receiving allocation in round-robin
@@ -217,8 +233,8 @@ type serverAllocationTicket struct {
 
 // Allocate remaining accelerators among a group of unallocated servers
 //   - round-robin allocation to members in group until no resources to satisfy requirements
-func processUnallocatedServerGroup(serverEntries []*serverEntry, available map[string]int) {
-	// fmt.Println("Unallocated server group entries: ", serverEntries)
+func allocateEqually(serverEntries []*serverEntry, available map[string]int) {
+	// fmt.Println("Unallocated server entries: ", serverEntries)
 
 	// create allocation tickets for all valid members in group
 	tickets := make(map[string]*serverAllocationTicket)
@@ -294,4 +310,29 @@ func processUnallocatedServerGroup(serverEntries []*serverEntry, available map[s
 		// fmt.Printf("updated allocation: server=%s, acc=%s, accCount=%d, type=%s, count=%d \n",
 		// 	ticket.server.Name(), alloc.Accelerator(), ticket.numReplicas, ticket.accType, count)
 	}
+}
+
+// Partition a list of server entries into groups of same priority
+//   - each group has same server priority
+//   - groups are ordered by priority
+func makePriorityGroups(serverEntries []*serverEntry) [][]*serverEntry {
+	serverEntryGroups := make([][]*serverEntry, 0)
+	numServerEntries := len(serverEntries)
+
+	// make groups of same priority servers
+	index := 0
+	for index < numServerEntries {
+		// start new group
+		group := make([]*serverEntry, 0)
+		group = append(group, serverEntries[index])
+		groupPriority := serverEntries[index].priority
+		index++
+		for index < numServerEntries && serverEntries[index].priority == groupPriority {
+			group = append(group, serverEntries[index])
+			index++
+		}
+		// group completed
+		serverEntryGroups = append(serverEntryGroups, group)
+	}
+	return serverEntryGroups
 }
