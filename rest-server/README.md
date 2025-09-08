@@ -77,28 +77,46 @@ The following data is needed by the Optimizer (Declarations described [types](..
             "name": "granite_13b",
             "acc": "A100",
             "accCount": 1,
-            "alpha": 20.58,
-            "beta": 0.41,
             "maxBatchSize": 32,
-            "atTokens": 512
+            "atTokens": 512,
+            "decodeParms": {
+                "alpha": 20.58,
+                "beta": 0.41
+            },
+            "prefillParms": {
+                "gamma": 200,
+                "delta": 0.021
+            }
             },
             {
             "name": "granite_13b",
             "acc": "G2",
             "accCount": 1,
-            "alpha": 17.15,
-            "beta": 0.34,
             "maxBatchSize": 38,
-            "atTokens": 512
+            "atTokens": 512,
+            "decodeParms": {
+                "alpha": 17.15,
+                "beta": 0.34
+            },
+            "prefillParms": {
+                "gamma": 170,
+                "delta": 0.017
+            }
             },
             {
             "name": "llama_70b",
             "acc": "G2",
             "accCount": 2,
-            "alpha": 22.84,
-            "beta": 5.89,
             "maxBatchSize": 6,
-            "atTokens": 512
+            "atTokens": 512,
+            "decodeParms": {
+                "alpha": 22.84,
+                "beta": 5.89
+            },
+            "prefillParms": {
+                "gamma": 220,
+                "delta": 0.295
+            }
             }
         ]
     }
@@ -107,9 +125,10 @@ The following data is needed by the Optimizer (Declarations described [types](..
     Performance data includes
 
    - `accCount`: number of accelerator (cards)
-   - `alpha` and `beta`: parameters (in msec) of the linear approximation of inter-token latency (ITL) as a function of the batch size (n), *ITL = alpha + beta . n*
    - `maxBatchSize`: maximum batch size to use, beyond which performance deteriorates
    - `atTokens`: average number of tokens used when determining the `maxBatchSize`
+   - `decodeParams`: decode parameters `alpha` and `beta` (in msec) of the linear approximation of inter-token latency (ITL) as a function of the batch size (n), *ITL = alpha + beta . n*
+   - `prefillParams`: prefill parameters `gamma` and `delta` (in msec) of the linear approximation of prefill time as a function of the number of input tokens (k) and the batch size (n), *Prefill = gamma + delta . k . n*
 
 1. **Service class data**: For all service classes, the specification, such as name, priority, and SLO targets for a service class. An example follows.
 
@@ -123,12 +142,12 @@ The following data is needed by the Optimizer (Declarations described [types](..
                     {
                         "model": "granite_13b",
                         "slo-itl": 40,
-                        "slo-ttw": 500
+                        "slo-ttft": 1000
                     },
                     {
                         "model": "llama_70b",
                         "slo-itl": 80,
-                        "slo-ttw": 500
+                        "slo-ttft": 1000
                     }
                 ]
             },
@@ -139,7 +158,7 @@ The following data is needed by the Optimizer (Declarations described [types](..
                     {
                         "model": "granite_13b",
                         "slo-itl": 80,
-                        "slo-ttw": 1000
+                        "slo-ttft": 2000
                     }
                 ]
             },
@@ -149,7 +168,7 @@ The following data is needed by the Optimizer (Declarations described [types](..
                 "modelTargets": [
                     {
                         "model": "mixtral_8_7b",
-                        "slo-tps": 2000
+                        "slo-tps": 4000
                     }
                 ]
             }
@@ -164,10 +183,10 @@ The following data is needed by the Optimizer (Declarations described [types](..
 
       - `name`: name of model
       - `slo-itl`: target SLO for ITL (msec)
-      - `slo-ttw` target SLO for request waiting (queueing) time (msec)
+      - `slo-ttft` target SLO TTFT, including queueing time (msec)
       - `slo-tps` target SLO for throughput (tokens/sec)
 
-1. **Server data**: For all inference servers, the name of the server, the model and service class it serves (currently, assuming a single model and service class per server), an option to not change the accelerator, a minimum number of replicas, a maximum batch size, and current and desired allocations. The current allocation reflects the state of the server and the desired allocation is provided by the Optimizer (as a solution to an optimization problem). An allocation includes accelerator, number of replicas, maximum batch size, cost, and observed or anticipated average ITL and waiting time, as well as load data. The load data includes statistical metrics about request arrivals and message lengths (number of tokens). An example follows.
+1. **Server data**: For all inference servers, the name of the server, the model and service class it serves (currently, assuming a single model and service class per server), an option to not change the accelerator, a minimum number of replicas, a maximum batch size, and current and desired allocations. The current allocation reflects the state of the server and the desired allocation is provided by the Optimizer (as a solution to an optimization problem). An allocation includes accelerator, number of replicas, maximum batch size, cost, and observed or anticipated average ITL and TTFT times, as well as load data. The load data includes statistical metrics about request arrivals and message lengths (number of input and output tokens). An example follows.
 
     ```json
     {
@@ -184,12 +203,11 @@ The following data is needed by the Optimizer (Declarations described [types](..
                     "maxBatch": 16,
                     "cost": 40,
                     "itlAverage": 25.2,
-                    "waitAverage": 726.5,
+                    "ttftAverage": 726.5,
                     "load": {
                         "arrivalRate": 100,
-                        "avgLength": 999,
-                        "arrivalCOV": 1.0,
-                        "serviceCOV": 1.0
+                        "avgInTokens": 128,
+                        "avgOutTokens": 999
                     }
                 },
                 "desiredAlloc": {
@@ -198,12 +216,11 @@ The following data is needed by the Optimizer (Declarations described [types](..
                     "maxBatch": 19,
                     "cost": 46,
                     "itlAverage": 21.16437,
-                    "waitAverage": 102.09766,
+                    "ttftAverage": 102.09766,
                     "load": {
                         "arrivalRate": 60,
-                        "avgLength": 1024,
-                        "arrivalCOV": 1.0,
-                        "serviceCOV": 1.0
+                        "avgInTokens": 96,
+                        "avgOutTokens": 1024
                     }
                 }
             }
@@ -253,12 +270,11 @@ The output of the Optimizer is an Allocation Solution, in addition to updating t
             "maxBatch": 19,
             "cost": 46,
             "itlAverage": 21.16437,
-            "waitAverage": 102.09766,
+            "ttftAverage": 102.09766,
             "load": {
                 "arrivalRate": 60,
-                "avgLength": 1024,
-                "arrivalCOV": 1.0,
-                "serviceCOV": 1.0
+                "avgInTokens": 96,
+                "avgOutTokens": 1024
             }
         }
     }

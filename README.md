@@ -28,6 +28,15 @@ There are two ways to run the optimizer.
 
 1. **Direct function calls**: An example is provided in [main.go](demos/main/main.go).
 
+    First, populate sample data.
+
+    ```bash
+    git submodule init
+    git submodule update
+    ```
+
+    Then, run the demo.
+
     ```bash
     cd demos/main
     go run main.go

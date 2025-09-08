@@ -132,6 +132,9 @@ func allocate(entries []*serverEntry,
 		alloc := top.allocations[top.curIndex]
 		gName := alloc.Accelerator()
 		acc := core.GetAccelerator(gName)
+		if acc == nil {
+			continue
+		}
 		tName := acc.Type()
 		unitsPerReplica := model.NumInstances(gName) * acc.Spec().Multiplicity
 		count := alloc.NumReplicas() * unitsPerReplica

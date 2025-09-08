@@ -122,23 +122,26 @@ func main() {
 		}
 
 		factorB := 2 * (rand.Float32() - 0.5) * (1 - alpha)
-		newLength := int(math.Ceil(float64(float32(load.AvgLength) * (1 + factorB))))
-		if newLength <= 0 {
-			newLength = 1
+		newInTokens := int(math.Ceil(float64(float32(load.AvgInTokens) * (1 + factorB))))
+		newOutTokens := int(math.Ceil(float64(float32(load.AvgOutTokens) * (1 + factorB))))
+		if newInTokens <= 0 {
+			newInTokens = 1
+		}
+		if newOutTokens <= 0 {
+			newOutTokens = 1
 		}
 		newLoad := config.ServerLoadSpec{
-			ArrivalRate: newArv,
-			AvgLength:   newLength,
-			ArrivalCOV:  load.ArrivalCOV,
-			ServiceCOV:  load.ServiceCOV,
+			ArrivalRate:  newArv,
+			AvgInTokens:  newInTokens,
+			AvgOutTokens: newOutTokens,
 		}
 		server.SetLoad(&newLoad)
 		if curAllocation := server.CurAllocation(); curAllocation != nil {
 			server.SetCurAllocation(server.Allocation().Clone())
 		}
 
-		// fmt.Printf("s=%s, rate=%v, tokens=%d \n",
-		// 	server.Name(), load.ArrivalRate, load.AvgLength)
+		// fmt.Printf("s=%s, rate=%v, inTokens=%d, outTokens=%d \n",
+		// 	server.Name(), load.ArrivalRate, load.AvgInTokens, load.AvgOutTokens)
 	}
 
 	system.Calculate()

@@ -365,10 +365,11 @@ func (s *System) String() string {
 		}
 		totalCost += alloc.cost
 		rate := load.ArrivalRate
-		tokens := load.AvgLength
-		fmt.Fprintf(&b, "s=%s; c=%s; m=%s; rate=%v; tk=%d; sol=%d, sat=%v, alloc=%v; ",
-			serverName, srvClassName, modelName, rate, tokens, len(server.allAllocations), server.Saturated(), alloc)
-		fmt.Fprintf(&b, "slo-itl=%v, slo-ttw=%v, slo-tps=%v \n", target.ITL, target.TTW, target.TPS)
+		inTokens := load.AvgInTokens
+		outTokens := load.AvgOutTokens
+		fmt.Fprintf(&b, "s=%s; c=%s; m=%s; rate=%v; inTk=%d; outTk=%d; sol=%d, sat=%v, alloc=%v; ",
+			serverName, srvClassName, modelName, rate, inTokens, outTokens, len(server.allAllocations), server.Saturated(), alloc)
+		fmt.Fprintf(&b, "slo-itl=%v, slo-ttft=%v, slo-tps=%v \n", target.ITL, target.TTFT, target.TPS)
 	}
 
 	b.WriteString("AllocationByType: \n")

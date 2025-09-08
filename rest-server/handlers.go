@@ -256,10 +256,10 @@ func getServiceClassModelTarget(c *gin.Context) {
 		return
 	}
 	c.IndentedJSON(http.StatusOK, config.ModelTarget{
-		Model:   model,
-		SLO_ITL: target.ITL,
-		SLO_TTW: target.TTW,
-		SLO_TPS: target.TPS,
+		Model:    model,
+		SLO_ITL:  target.ITL,
+		SLO_TTFT: target.TTFT,
+		SLO_TPS:  target.TPS,
 	})
 }
 
@@ -278,10 +278,10 @@ func removeServiceClassModelTarget(c *gin.Context) {
 	}
 	svc.RemoveModelTarget(model)
 	c.IndentedJSON(http.StatusOK, config.ModelTarget{
-		Model:   model,
-		SLO_ITL: target.ITL,
-		SLO_TTW: target.TTW,
-		SLO_TPS: target.TPS,
+		Model:    model,
+		SLO_ITL:  target.ITL,
+		SLO_TTFT: target.TTFT,
+		SLO_TPS:  target.TPS,
 	})
 }
 

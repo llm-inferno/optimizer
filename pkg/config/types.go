@@ -62,13 +62,25 @@ type ModelData struct {
 
 // Specifications for a combination of a model and accelerator data
 type ModelAcceleratorPerfData struct {
-	Name         string  `json:"name"`         // model name
-	Acc          string  `json:"acc"`          // accelerator name
-	AccCount     int     `json:"accCount"`     // number of accelerator units used by model
-	Alpha        float32 `json:"alpha"`        // alpha parameter of ITL
-	Beta         float32 `json:"beta"`         // beta parameter of ITL
-	MaxBatchSize int     `json:"maxBatchSize"` // max batch size based on average number of tokens per request
-	AtTokens     int     `json:"atTokens"`     // average number of tokens per request assumed in max batch size calculation
+	Name         string       `json:"name"`         // model name
+	Acc          string       `json:"acc"`          // accelerator name
+	AccCount     int          `json:"accCount"`     // number of accelerator units used by model
+	MaxBatchSize int          `json:"maxBatchSize"` // max batch size based on average number of tokens per request
+	AtTokens     int          `json:"atTokens"`     // average number of tokens per request assumed in max batch size calculation
+	DecodeParms  DecodeParms  `json:"decodeParms"`  // parameters for estimating decode time
+	PrefillParms PrefillParms `json:"prefillParms"` // parameters for estimating prefill time
+}
+
+// Parameters for estimating decode time = alpha + beta * batchSize (msec); batchSize > 0
+type DecodeParms struct {
+	Alpha float32 `json:"alpha"` // base
+	Beta  float32 `json:"beta"`  // slope
+}
+
+// Parameters for estimating prefill time = gamma + delta * inputTokens * batchSize (msec); inputTokens, batchSize > 0
+type PrefillParms struct {
+	Gamma float32 `json:"gamma"` // base
+	Delta float32 `json:"delta"` // slope
 }
 
 // Data related to a service class SLOs
@@ -85,10 +97,10 @@ type ServiceClassSpec struct {
 
 // Specification of SLO targets for a model
 type ModelTarget struct {
-	Model   string  `json:"model"`   // model name
-	SLO_ITL float32 `json:"slo-itl"` // inter-token latency (msec)
-	SLO_TTW float32 `json:"slo-ttw"` // request waiting time (msec)
-	SLO_TPS float32 `json:"slo-tps"` // throughput (tokens/sec)
+	Model    string  `json:"model"`    // model name
+	SLO_ITL  float32 `json:"slo-itl"`  // inter-token latency (msec)
+	SLO_TTFT float32 `json:"slo-ttft"` // time to first token, including queueing (msec)
+	SLO_TPS  float32 `json:"slo-tps"`  // throughput (tokens/sec)
 }
 
 // Data related to a Server
@@ -108,12 +120,26 @@ type ServerSpec struct {
 	DesiredAlloc    AllocationData `json:"desiredAlloc"`    // desired allocation
 }
 
+// Data about a server allocation
+type AllocationData struct {
+	Accelerator string         `json:"accelerator"` // accelerator name
+	NumReplicas int            `json:"numReplicas"` // number of replicas
+	MaxBatch    int            `json:"maxBatch"`    // max batch size
+	Cost        float32        `json:"cost"`        // cost of allocation
+	ITLAverage  float32        `json:"itlAverage"`  // average ITL
+	TTFTAverage float32        `json:"ttftAverage"` // average TTFT
+	Load        ServerLoadSpec `json:"load"`        // server load statistics
+}
+
 // Specifications of server load statistics
 type ServerLoadSpec struct {
-	ArrivalRate float32 `json:"arrivalRate"` // req/min
-	AvgLength   int     `json:"avgLength"`   // number of tokens
-	ArrivalCOV  float32 `json:"arrivalCOV"`  // coefficient of variation of inter-request arrival time
-	ServiceCOV  float32 `json:"serviceCOV"`  // coefficient of variation of request service time
+	ArrivalRate  float32 `json:"arrivalRate"`  // req/min
+	AvgInTokens  int     `json:"avgInTokens"`  // average number of input tokens
+	AvgOutTokens int     `json:"avgOutTokens"` // average number of output tokens
+}
+
+type AllocationSolution struct {
+	Spec map[string]AllocationData `json:"allocations"` // map of server names to allocation data
 }
 
 // Data related to Optimizer
@@ -129,19 +155,4 @@ type OptimizerSpec struct {
 	UseCplex          bool   `json:"useCplex"`          // use CPLEX solver for MILP problem
 	DelayedBestEffort bool   `json:"delayedBestEffort"` // delay best effort allocation after attempting allocation to all priority groups
 	SaturationPolicy  string `json:"saturationPolicy"`  // allocation policy under saturated condition
-}
-
-type AllocationSolution struct {
-	Spec map[string]AllocationData `json:"allocations"` // map of server names to allocation data
-}
-
-// Data about a server allocation
-type AllocationData struct {
-	Accelerator string         `json:"accelerator"` // accelerator name
-	NumReplicas int            `json:"numReplicas"` // number of replicas
-	MaxBatch    int            `json:"maxBatch"`    // max batch size
-	Cost        float32        `json:"cost"`        // cost of allocation
-	ITLAverage  float32        `json:"itlAverage"`  // average ITL
-	WaitAverage float32        `json:"waitAverage"` // average wait time
-	Load        ServerLoadSpec `json:"load"`        // server load statistics
 }

@@ -15,14 +15,14 @@ type ServiceClass struct {
 
 // target SLOs for service class
 type Target struct {
-	ITL float32
-	TTW float32
-	TPS float32
+	ITL  float32
+	TTFT float32
+	TPS  float32
 }
 
 func (t *Target) String() string {
-	return fmt.Sprintf("[ITL=%v, TTW=%v, TPS=%v]",
-		t.ITL, t.TTW, t.TPS)
+	return fmt.Sprintf("[ITL=%v, TTFT=%v, TPS=%v]",
+		t.ITL, t.TTFT, t.TPS)
 }
 
 func NewServiceClass(name string, priority int) *ServiceClass {
@@ -71,9 +71,9 @@ func (c *ServiceClass) UpdateModelTargets(spec *config.ServiceClassSpec) bool {
 func (c *ServiceClass) AddModelTarget(spec *config.ModelTarget) *Target {
 	modelName := spec.Model
 	target := &Target{
-		ITL: spec.SLO_ITL,
-		TTW: spec.SLO_TTW,
-		TPS: spec.SLO_TPS,
+		ITL:  spec.SLO_ITL,
+		TTFT: spec.SLO_TTFT,
+		TPS:  spec.SLO_TPS,
 	}
 	c.targets[modelName] = target
 	return target
@@ -88,10 +88,10 @@ func (c *ServiceClass) Spec() config.ServiceClassSpec {
 	i := 0
 	for modelName, target := range c.targets {
 		modelTargets[i] = config.ModelTarget{
-			Model:   modelName,
-			SLO_ITL: target.ITL,
-			SLO_TTW: target.TTW,
-			SLO_TPS: target.TPS,
+			Model:    modelName,
+			SLO_ITL:  target.ITL,
+			SLO_TTFT: target.TTFT,
+			SLO_TPS:  target.TPS,
 		}
 		i++
 	}

@@ -81,18 +81,18 @@ func main() {
 		{51, 38, 19, 102, 51, 25, 8, 102, 12},
 		{32, 24, 12, 64, 32, 16, 5, 64, 8},
 		{76, 57, 28, 153, 76, 38, 12, 153, 19},
-		{102, 76, 38, 204, 102, 51, 16, 204, 25},
 		{51, 38, 19, 102, 51, 25, 8, 102, 12},
-		{64, 48, 24, 128, 64, 32, 10, 128, 16},
+		{25, 19, 9, 51, 25, 12, 4, 51, 6},
+		{32, 24, 12, 64, 32, 16, 5, 64, 8},
+		{38, 28, 14, 76, 38, 19, 6, 76, 9},
+		{51, 38, 19, 102, 51, 25, 8, 102, 12},
+		{32, 24, 12, 64, 32, 16, 5, 64, 8},
 		{76, 57, 28, 153, 76, 38, 12, 153, 19},
-		{102, 76, 38, 204, 102, 51, 16, 204, 25},
-		{64, 48, 24, 128, 64, 32, 10, 128, 16},
-		{153, 115, 57, 307, 153, 76, 24, 307, 38},
-		{204, 153, 76, 409, 204, 102, 32, 409, 51},
-		{102, 76, 38, 204, 102, 51, 16, 204, 25},
-		{128, 96, 48, 256, 128, 64, 20, 256, 32},
-		{153, 115, 57, 307, 153, 76, 24, 307, 38},
-		{204, 153, 76, 409, 204, 102, 32, 409, 51},
+		{51, 38, 19, 102, 51, 25, 8, 102, 13},
+		{25, 19, 9, 51, 25, 13, 4, 51, 6},
+		{32, 24, 12, 64, 32, 16, 5, 64, 8},
+		{38, 29, 14, 77, 38, 19, 6, 77, 9},
+		{51, 38, 19, 102, 51, 25, 8, 102, 13},
 	}
 
 	count := [][]int{
@@ -121,6 +121,24 @@ func main() {
 
 	atTokens := 512
 
+	gammaFactor := float32(8)
+	deltaFactor := float32(32)
+
+	// select using masks
+	useMask := false
+	if useMask {
+		accMask := []int{0, 1, 4, 5, 9, 18}
+		aNames = MaskArray(aNames, accMask)
+
+		modMask := []int{0, 2, 4, 6, 8}
+		mNames = MaskArray(mNames, modMask)
+
+		alpha = MaskMatrix(alpha, accMask, modMask)
+		beta = MaskMatrix(beta, accMask, modMask)
+		maxBatchSize = MaskMatrix(maxBatchSize, accMask, modMask)
+		count = MaskMatrix(count, accMask, modMask)
+	}
+
 	// create data structures
 	numAcc := len(aNames)
 	numModels := len(mNames)
@@ -134,10 +152,16 @@ func main() {
 				Name:         n,
 				Acc:          a,
 				AccCount:     count[j][i],
-				Alpha:        alpha[j][i],
-				Beta:         beta[j][i],
 				MaxBatchSize: maxBatchSize[j][i],
 				AtTokens:     atTokens,
+				DecodeParms: config.DecodeParms{
+					Alpha: alpha[j][i],
+					Beta:  beta[j][i],
+				},
+				PrefillParms: config.PrefillParms{
+					Gamma: alpha[j][i] * gammaFactor,
+					Delta: beta[j][i] / deltaFactor,
+				},
 			}
 			models.PerfData[k] = pd
 			k++
@@ -150,4 +174,37 @@ func main() {
 	} else {
 		fmt.Println(string(byteValue))
 	}
+}
+
+func MaskArray[T any](data []T, mask []int) []T {
+	maskedData := make([]T, len(mask))
+	for i, j := range mask {
+		if j >= 0 && j < len(data) {
+			maskedData[i] = data[j]
+		}
+	}
+	return maskedData
+}
+
+func MaskMatrix[T any](data [][]T, maskRow []int, maskCol []int) [][]T {
+	numRow := len(data)
+	numCol := len(data[0])
+
+	m := len(maskRow)
+	n := len(maskCol)
+
+	maskedData := make([][]T, m)
+	for i := range m {
+		maskedData[i] = make([]T, n)
+	}
+
+	for i := range m {
+		for j := range n {
+			if maskRow[i] >= 0 && maskRow[i] < numRow &&
+				maskCol[j] >= 0 && maskCol[j] < numCol {
+				maskedData[i][j] = data[maskRow[i]][maskCol[j]]
+			}
+		}
+	}
+	return maskedData
 }

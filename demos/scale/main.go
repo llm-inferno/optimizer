@@ -121,12 +121,12 @@ func main() {
 	}
 	fmt.Println("AllocBefore: ", allocBefore)
 	newArv := load.ArrivalRate * 2.5
-	newLength := int(float32(load.AvgLength) * 1.5)
+	newOutTokens := int(float32(load.AvgOutTokens) * 1.5)
+	newInTokens := int(float32(load.AvgInTokens) * 1.5)
 	newLoad := config.ServerLoadSpec{
-		ArrivalRate: newArv,
-		AvgLength:   newLength,
-		ArrivalCOV:  load.ArrivalCOV,
-		ServiceCOV:  load.ServiceCOV,
+		ArrivalRate:  newArv,
+		AvgInTokens:  newInTokens,
+		AvgOutTokens: newOutTokens,
 	}
 	server.SetLoad(&newLoad)
 
