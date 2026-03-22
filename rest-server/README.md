@@ -73,51 +73,42 @@ The following data is needed by the Optimizer (Declarations described [types](..
     ```json
     {
         "models": [
-            {
-            "name": "granite_13b",
-            "acc": "A100",
-            "accCount": 1,
-            "maxBatchSize": 32,
-            "atTokens": 512,
-            "decodeParms": {
-                "alpha": 20.58,
-                "beta": 0.41
-            },
-            "prefillParms": {
-                "gamma": 200,
-                "delta": 0.021
-            }
-            },
-            {
-            "name": "granite_13b",
-            "acc": "G2",
-            "accCount": 1,
-            "maxBatchSize": 38,
-            "atTokens": 512,
-            "decodeParms": {
-                "alpha": 17.15,
-                "beta": 0.34
-            },
-            "prefillParms": {
-                "gamma": 170,
-                "delta": 0.017
-            }
-            },
-            {
-            "name": "llama_70b",
-            "acc": "G2",
-            "accCount": 2,
-            "maxBatchSize": 6,
-            "atTokens": 512,
-            "decodeParms": {
-                "alpha": 22.84,
-                "beta": 5.89
-            },
-            "prefillParms": {
-                "gamma": 220,
-                "delta": 0.295
-            }
-            }
+                {
+                "name": "granite_13b",
+                "acc": "A100",
+                "accCount": 1,
+                "maxBatchSize": 64,
+                "atTokens": 512,
+                "perfParms": {
+                    "alpha": 20.58,
+                    "beta": 0.41,
+                    "gamma": 0.00128125
+                    }
+                },
+                {
+                "name": "granite_13b",
+                "acc": "G2",
+                "accCount": 1,
+                "maxBatchSize": 76,
+                "atTokens": 512,
+                "perfParms": {
+                    "alpha": 17.15,
+                    "beta": 0.34,
+                    "gamma": 0.0010625
+                    }
+                },
+                {
+                "name": "llama_70b",
+                "acc": "G2",
+                "accCount": 4,
+                "maxBatchSize": 12,
+                "atTokens": 512,
+                "perfParms": {
+                    "alpha": 22.84,
+                    "beta": 5.89,
+                    "gamma": 0.01840625
+                    }
+                }
         ]
     }
     ```
@@ -127,8 +118,7 @@ The following data is needed by the Optimizer (Declarations described [types](..
    - `accCount`: number of accelerator (cards)
    - `maxBatchSize`: maximum batch size to use, beyond which performance deteriorates
    - `atTokens`: average number of tokens used when determining the `maxBatchSize`
-   - `decodeParams`: decode parameters `alpha` and `beta` (in msec) of the linear approximation of inter-token latency (ITL) as a function of the batch size (n), *ITL = alpha + beta . n*
-   - `prefillParams`: prefill parameters `gamma` and `delta` (in msec) of the linear approximation of prefill time as a function of the number of input tokens (k) and the batch size (n), *Prefill = gamma + delta . k . n*
+   - `perfParms`: performance parameters `alpha`, `beta`, and `gamma` (in msec) of the linear approximation of iteration time as a function of computed tokens and transferred tokens per batch (n), *iterationTime = alpha + beta . computedTokens + gamma . transferredTokens*
 
 1. **Service class data**: For all service classes, the specification, such as name, priority, and SLO targets for a service class. An example follows.
 
