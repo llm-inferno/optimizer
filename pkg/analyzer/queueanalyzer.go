@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/llm-inferno/queue-analysis/pkg/queue"
-
 	utils "github.com/llm-inferno/queue-analysis/pkg/utils"
 )
 
@@ -14,9 +13,13 @@ const Epsilon = float32(0.001)
 // fraction of maximum server throughput to provide stability (running this fraction below the maximum)
 const StabilitySafetyFraction = float32(0.1)
 
+// maximum number of tokens per batch (iteration)
+const DefaultMaxNumTokens = 8192
+
 // Analyzer of inference server queue
-type QueueAnalyzer struct {
+type LLMQueueAnalyzer struct {
 	MaxBatchSize int                           // maximum batch size
+	MaxNumTokens int                           // maximum number of tokens per batch
 	MaxQueueSize int                           // maximum queue size
 	ServiceParms *ServiceParms                 // request processing parameters
 	RequestSize  *RequestSize                  // number of input and output tokens per request
@@ -27,32 +30,23 @@ type QueueAnalyzer struct {
 // queue configuration parameters
 type Configuration struct {
 	MaxBatchSize int           // maximum batch size (limit on the number of requests concurrently receiving service >0)
+	MaxNumTokens int           // maximum number of tokens per batch (limit on the number of tokens per batch >0)
 	MaxQueueSize int           // maximum queue size (limit on the number of requests queued for servive >=0)
 	ServiceParms *ServiceParms // request processing parameters
 }
 
-// request processing parameters
+// request processing parameters:
+// iterationTime = alpha + beta * computeTime + gamma * memoryAccessTime
 type ServiceParms struct {
-	Prefill *PrefillParms // parameters to calculate prefill time
-	Decode  *DecodeParms  // parameters to calculate decode time
-}
-
-// prefill time = gamma + delta * inputTokens * batchSize (msec); inputTokens > 0
-type PrefillParms struct {
-	Gamma float32 // base
-	Delta float32 // slope
-}
-
-// decode time = alpha + beta * batchSize (msec); batchSize > 0
-type DecodeParms struct {
 	Alpha float32 // base
-	Beta  float32 // slope
+	Beta  float32 // slope for compute time
+	Gamma float32 // slope for memory access time
 }
 
 // request tokens data
 type RequestSize struct {
-	AvgInputTokens  int // average number of input tokens per request
-	AvgOutputTokens int // average number of output tokens per request
+	AvgInputTokens  float32 // average number of input tokens per request
+	AvgOutputTokens float32 // average number of output tokens per request
 }
 
 // range of request rates (requests/sec)
@@ -69,6 +63,7 @@ type AnalysisMetrics struct {
 	AvgNumInServ   float32 // average number of requests in service
 	AvgPrefillTime float32 // average request prefill time (msec)
 	AvgTokenTime   float32 // average token decode time (msec)
+	AvgTTFT        float32 // average time to first token (msec)
 	MaxRate        float32 // maximum throughput (requests/sec)
 	Rho            float32 // utilization
 }
@@ -88,7 +83,7 @@ type TargetRate struct {
 }
 
 // create a new queue analyzer from config
-func NewQueueAnalyzer(qConfig *Configuration, requestSize *RequestSize) (*QueueAnalyzer, error) {
+func NewLLMQueueAnalyzer(qConfig *Configuration, requestSize *RequestSize) (*LLMQueueAnalyzer, error) {
 	if err := qConfig.check(); err != nil {
 		return nil, err
 	}
@@ -100,42 +95,39 @@ func NewQueueAnalyzer(qConfig *Configuration, requestSize *RequestSize) (*QueueA
 }
 
 // build queueing model using service rates, leaving arrival rate as parameter
-func BuildModel(qConfig *Configuration, requestSize *RequestSize) (modelData *QueueAnalyzer) {
-	parms := qConfig.ServiceParms
+func BuildModel(c *Configuration, r *RequestSize) (modelData *LLMQueueAnalyzer) {
+	parms := c.ServiceParms
 
 	// calculate state-dependent service rate
-	servRate := make([]float32, qConfig.MaxBatchSize)
-	for n := 1; n <= qConfig.MaxBatchSize; n++ {
-		prefillTime := parms.Prefill.PrefillTime(requestSize.AvgInputTokens, float32(n))
-		numDecode := requestSize.AvgOutputTokens - 1 // number of decodes (one per output token except the first)
-		// special case: allow one decode in case of decode only and one output token
-		if requestSize.AvgInputTokens == 0 && requestSize.AvgOutputTokens == 1 {
-			numDecode = 1
-		}
-		decodeTime := float32(numDecode) * parms.Decode.DecodeTime(float32(n))
+	servRate := make([]float32, c.MaxBatchSize)
+	for n := 1; n <= c.MaxBatchSize; n++ {
+		prefillTime := parms.PrefillTime(r, float32(n))
+		decodeTime := r.AvgOutputTokens * parms.DecodeTime(r, float32(n))
 		servRate[n-1] = float32(n) / (prefillTime + decodeTime)
 	}
 
 	// set and check limits
 	lambdaMin := servRate[0] * Epsilon
-	lambdaMax := servRate[qConfig.MaxBatchSize-1] * (1 - Epsilon)
+	lambdaMax := servRate[c.MaxBatchSize-1] * (1 - Epsilon)
 	rateRange := &RateRange{Min: lambdaMin * 1000, Max: lambdaMax * 1000}
 
 	// create and solve model
-	occupancyUpperBound := qConfig.MaxQueueSize + qConfig.MaxBatchSize
+	occupancyUpperBound := c.MaxQueueSize + c.MaxBatchSize
 	model := queue.NewMM1ModelStateDependent(occupancyUpperBound, servRate)
-	return &QueueAnalyzer{
-		MaxBatchSize: qConfig.MaxBatchSize,
-		MaxQueueSize: qConfig.MaxQueueSize,
+
+	return &LLMQueueAnalyzer{
+		MaxBatchSize: c.MaxBatchSize,
+		MaxNumTokens: c.MaxNumTokens,
+		MaxQueueSize: c.MaxQueueSize,
 		ServiceParms: parms,
-		RequestSize:  requestSize,
+		RequestSize:  r,
 		Model:        model,
 		RateRange:    rateRange,
 	}
 }
 
 // evaluate performance metrics given request rate
-func (qa *QueueAnalyzer) Analyze(requestRate float32) (metrics *AnalysisMetrics, err error) {
+func (qa *LLMQueueAnalyzer) Analyze(requestRate float32) (metrics *AnalysisMetrics, err error) {
 	if requestRate <= 0 {
 		return nil, fmt.Errorf("invalid request rate %v", requestRate)
 	}
@@ -155,10 +147,9 @@ func (qa *QueueAnalyzer) Analyze(requestRate float32) (metrics *AnalysisMetrics,
 
 	// get statistics
 	avgNumInServ := model.GetAvgNumInServers()
-
-	effConc := EffectiveConcurrency(model.GetAvgServTime(), qa.ServiceParms, qa.RequestSize, qa.MaxBatchSize)
-	prefillTime := qa.ServiceParms.Prefill.PrefillTime(qa.RequestSize.AvgInputTokens, effConc)
-	tokenTime := qa.ServiceParms.Decode.DecodeTime(effConc)
+	avgPrefillTime := qa.ServiceParms.PrefillTime(qa.RequestSize, avgNumInServ)
+	avgDecodeTime := (model.GetAvgServTime() - avgPrefillTime) / qa.RequestSize.AvgOutputTokens
+	avgTTFT := model.GetAvgWaitTime() + avgPrefillTime + avgDecodeTime
 
 	rho := avgNumInServ / float32(qa.MaxBatchSize)
 	rho = min(max(rho, 0), 1)
@@ -169,24 +160,28 @@ func (qa *QueueAnalyzer) Analyze(requestRate float32) (metrics *AnalysisMetrics,
 		AvgRespTime:    model.GetAvgRespTime(),
 		AvgWaitTime:    model.GetAvgWaitTime(),
 		AvgNumInServ:   avgNumInServ,
-		AvgPrefillTime: prefillTime,
-		AvgTokenTime:   tokenTime,
+		AvgPrefillTime: avgPrefillTime,
+		AvgTokenTime:   avgDecodeTime,
+		AvgTTFT:        avgTTFT,
 		MaxRate:        rateRange.Max,
 		Rho:            rho,
 	}
 	return metrics, nil
 }
 
-// global variables used by eval functions, to be set before calling eval function
-var evalRequestSize *RequestSize   // number of input and output tokens per request
-var evalServiceParms *ServiceParms // request processing parameters for prefill and decode stages
-var evalMaxBatchSize int           // max batch size
+// model and parameters used in functional evaluation
+type evalFuncData struct {
+	model        *queue.MM1ModelStateDependent
+	requestSize  *RequestSize
+	serviceParms *ServiceParms
+	maxBatchSize int
+}
 
 // evaluate max request rates to achieve a given target performance, returns
 //   - max request rates
 //   - performance metrics at min of max request rates
 //   - achieved values of targets
-func (qa *QueueAnalyzer) Size(targetPerf *TargetPerf) (targetRate *TargetRate, metrics *AnalysisMetrics, achieved *TargetPerf, err error) {
+func (qa *LLMQueueAnalyzer) Size(targetPerf *TargetPerf) (targetRate *TargetRate, metrics *AnalysisMetrics, achieved *TargetPerf, err error) {
 	if err := targetPerf.check(); err != nil {
 		return nil, nil, nil, err
 	}
@@ -197,18 +192,18 @@ func (qa *QueueAnalyzer) Size(targetPerf *TargetPerf) (targetRate *TargetRate, m
 	lambdaMin := qa.RateRange.Min / 1000
 	lambdaMax := qa.RateRange.Max / 1000
 
-	// set global variables for model and parameters used in functional evaluation
-	utils.Model = qa.Model
-	evalRequestSize = qa.RequestSize
-	evalServiceParms = qa.ServiceParms
-	evalMaxBatchSize = qa.MaxBatchSize
-
 	var ind int
 
 	// find max rate to achieve target TTFT time
 	lambdaStarTTFT := lambdaMax
 	if targetTTFT > 0 {
-		lambdaStarTTFT, ind, err = utils.BinarySearch(lambdaMin, lambdaMax, targetTTFT, EvalTTFT)
+		evalTTFT := makeTTFTEval(&evalFuncData{
+			model:        qa.Model,
+			requestSize:  qa.RequestSize,
+			serviceParms: qa.ServiceParms,
+			maxBatchSize: qa.MaxBatchSize,
+		})
+		lambdaStarTTFT, ind, err = utils.BinarySearch(lambdaMin, lambdaMax, targetTTFT, evalTTFT)
 		if ind < 0 {
 			err = fmt.Errorf("target is below the bounded region")
 		}
@@ -221,7 +216,13 @@ func (qa *QueueAnalyzer) Size(targetPerf *TargetPerf) (targetRate *TargetRate, m
 	// find max rate to achieve target ITL time
 	lambdaStarITL := lambdaMax
 	if targetITL > 0 {
-		lambdaStarITL, ind, err = utils.BinarySearch(lambdaMin, lambdaMax, targetITL, EvalITL)
+		evalITL := makeITLEval(&evalFuncData{
+			model:        qa.Model,
+			requestSize:  qa.RequestSize,
+			serviceParms: qa.ServiceParms,
+			maxBatchSize: qa.MaxBatchSize,
+		})
+		lambdaStarITL, ind, err = utils.BinarySearch(lambdaMin, lambdaMax, targetITL, evalITL)
 		if ind < 0 {
 			err = fmt.Errorf("target is below the bounded region")
 		}
@@ -251,64 +252,64 @@ func (qa *QueueAnalyzer) Size(targetPerf *TargetPerf) (targetRate *TargetRate, m
 	}
 
 	achieved = &TargetPerf{
-		TargetTTFT: metrics.AvgWaitTime + metrics.AvgPrefillTime,
+		TargetTTFT: metrics.AvgTTFT,
 		TargetITL:  metrics.AvgTokenTime,
-		TargetTPS:  metrics.Throughput * float32(qa.RequestSize.AvgOutputTokens),
+		TargetTPS:  metrics.Throughput * qa.RequestSize.AvgOutputTokens,
 	}
 	return targetRate, metrics, achieved, nil
 }
 
-func (p *PrefillParms) PrefillTime(avgInputTokens int, batchSize float32) float32 {
-	if avgInputTokens == 0 {
+// Average iteration time as a function of the batch size T(n)
+func (p *ServiceParms) IterationTime(r *RequestSize, batchSize float32) float32 {
+	tokensCompute := (r.AvgInputTokens + r.AvgOutputTokens) / (r.AvgOutputTokens + 1)
+	tokensMemory := r.AvgInputTokens + r.AvgOutputTokens/2
+	return p.Alpha + batchSize*(p.Beta*tokensCompute+p.Gamma*tokensMemory)
+}
+
+// Average prefill time as a function of the batch size
+func (p *ServiceParms) PrefillTime(r *RequestSize, batchSize float32) float32 {
+	if r.AvgInputTokens == 0 {
 		return 0
 	}
-	return p.Gamma + p.Delta*float32(avgInputTokens)*batchSize
+	return p.IterationTime(r, batchSize) + (p.Beta+p.Gamma)*r.AvgInputTokens
 }
 
-func (p *DecodeParms) DecodeTime(batchSize float32) float32 {
-	return p.Alpha + p.Beta*batchSize
+// Average decode time (generation of one token) as a function of the batch size
+func (p *ServiceParms) DecodeTime(r *RequestSize, batchSize float32) float32 {
+	return p.IterationTime(r, batchSize) +
+		p.Beta + p.Gamma*(r.AvgInputTokens+r.AvgOutputTokens/2)
 }
 
-// Function used in binary search (target TTFT)
-//   - x is lambda req/msec
-func EvalTTFT(x float32) (float32, error) {
-	utils.Model.Solve(x, 1)
-	if !utils.Model.IsValid() {
-		return 0, fmt.Errorf("invalid model %s", utils.Model)
+// closure for binary search evaluating TTFT at a given lambda (req/msec)
+func makeTTFTEval(data *evalFuncData) func(x float32) (float32, error) {
+	return func(x float32) (float32, error) {
+		data.model.Solve(x, 1)
+		if !data.model.IsValid() {
+			return 0, fmt.Errorf("invalid model %s", data.model)
+		}
+		avgPrefillTime := data.serviceParms.PrefillTime(data.requestSize, data.model.GetAvgNumInServers())
+		avgDecodeTime := (data.model.GetAvgServTime() - avgPrefillTime) / data.requestSize.AvgOutputTokens
+		ttft := data.model.GetAvgWaitTime() + avgPrefillTime + avgDecodeTime
+		return ttft, nil
 	}
-	avgWaitTime := utils.Model.GetAvgWaitTime()
-	effConc := EffectiveConcurrency(utils.Model.GetAvgServTime(), evalServiceParms, evalRequestSize, evalMaxBatchSize)
-	ttft := avgWaitTime + evalServiceParms.Prefill.PrefillTime(evalRequestSize.AvgInputTokens, effConc)
-	return ttft, nil
 }
 
-// Function used in binary search (target ITL)
-//   - x is lambda req/msec
-func EvalITL(x float32) (float32, error) {
-	utils.Model.Solve(x, 1)
-	if !utils.Model.IsValid() {
-		return 0, fmt.Errorf("invalid model %s", utils.Model)
+// closure for binary search evaluating ITL at a given lambda (req/msec)
+func makeITLEval(data *evalFuncData) func(x float32) (float32, error) {
+	return func(x float32) (float32, error) {
+		data.model.Solve(x, 1)
+		if !data.model.IsValid() {
+			return 0, fmt.Errorf("invalid model %s", data.model)
+		}
+		avgPrefillTime := data.serviceParms.PrefillTime(data.requestSize, data.model.GetAvgNumInServers())
+		avgDecodeTime := (data.model.GetAvgServTime() - avgPrefillTime) / data.requestSize.AvgOutputTokens
+		return avgDecodeTime, nil
 	}
-	effConc := EffectiveConcurrency(utils.Model.GetAvgServTime(), evalServiceParms, evalRequestSize, evalMaxBatchSize)
-	return evalServiceParms.Decode.DecodeTime(effConc), nil
-}
-
-// calculate effective average number of requests in service (n), given average request service time
-//   - n has to satisfy: prefillTime(n) + totalDecodeTime(n) = avgServiceTime
-//   - prefillTime(n) = gamma + delta * inTokens * n
-//   - totalDecodeTime(n) = (alpha + beta * n) * (outTokens - 1)
-func EffectiveConcurrency(avgServiceTime float32, serviceParms *ServiceParms, requestSize *RequestSize, maxBatchSize int) float32 {
-	tokens := float32(requestSize.AvgOutputTokens - 1)
-	numerator := avgServiceTime - (serviceParms.Prefill.Gamma + serviceParms.Decode.Alpha*tokens)
-	denominator := (serviceParms.Prefill.Delta * float32(requestSize.AvgInputTokens)) + (serviceParms.Decode.Beta * tokens)
-	n := numerator / denominator
-	return min(max(n, 0), float32(maxBatchSize))
 }
 
 // check validity of configuration parameters
 func (c *Configuration) check() error {
-	if c.MaxBatchSize <= 0 || c.MaxQueueSize < 0 || c.ServiceParms == nil ||
-		c.ServiceParms.Prefill == nil || c.ServiceParms.Decode == nil {
+	if c.MaxBatchSize <= 0 || c.MaxQueueSize < 0 || c.ServiceParms == nil {
 		return fmt.Errorf("invalid configuration %s", c)
 	}
 	return nil
@@ -337,30 +338,21 @@ func (targetPerf *TargetPerf) check() error {
  */
 
 func (c *Configuration) String() string {
-	return fmt.Sprintf("{maxBatch=%d, maxQueue=%d, servParms:%s}",
-		c.MaxBatchSize, c.MaxQueueSize, c.ServiceParms)
+	return fmt.Sprintf("{maxBatch=%d, maxTokens=%d, maxQueue=%d, servParms:%s}",
+		c.MaxBatchSize, c.MaxNumTokens, c.MaxQueueSize, c.ServiceParms)
 }
 
-func (qa *QueueAnalyzer) String() string {
-	return fmt.Sprintf("{maxBatch=%d, maxQueue=%d, servParms:%s, reqSize:%s, model:%s, rates:%s}",
-		qa.MaxBatchSize, qa.MaxQueueSize, qa.ServiceParms, qa.RequestSize, qa.Model, qa.RateRange)
+func (qa *LLMQueueAnalyzer) String() string {
+	return fmt.Sprintf("{maxBatch=%d, maxTokens=%d, maxQueue=%d, servParms:%s, reqSize:%s, model:%s, rates:%s}",
+		qa.MaxBatchSize, qa.MaxNumTokens, qa.MaxQueueSize, qa.ServiceParms, qa.RequestSize, qa.Model, qa.RateRange)
 }
 
 func (sp *ServiceParms) String() string {
-	return fmt.Sprintf("{prefillParms=%s, decodeParms=%s}",
-		sp.Prefill, sp.Decode)
-}
-
-func (p *PrefillParms) String() string {
-	return fmt.Sprintf("{gamma=%.3f, delta=%.5f}", p.Gamma, p.Delta)
-}
-
-func (p *DecodeParms) String() string {
-	return fmt.Sprintf("{alpha=%.3f, beta=%.5f}", p.Alpha, p.Beta)
+	return fmt.Sprintf("{alpha=%.3f, beta=%.5f, gamma=%.5f}", sp.Alpha, sp.Beta, sp.Gamma)
 }
 
 func (rq *RequestSize) String() string {
-	return fmt.Sprintf("{inTokens=%d, outTokens=%d}", rq.AvgInputTokens, rq.AvgOutputTokens)
+	return fmt.Sprintf("{inTokens=%.0f, outTokens=%.0f}", rq.AvgInputTokens, rq.AvgOutputTokens)
 }
 
 func (rr *RateRange) String() string {
@@ -368,8 +360,8 @@ func (rr *RateRange) String() string {
 }
 
 func (am *AnalysisMetrics) String() string {
-	return fmt.Sprintf("{tput=%.3f, lat=%.3f, wait=%.3f, conc=%.3f, prefill=%.3f, itl=%.3f, maxRate=%.3f, rho=%0.3f}",
-		am.Throughput, am.AvgRespTime, am.AvgWaitTime, am.AvgNumInServ, am.AvgPrefillTime, am.AvgTokenTime, am.MaxRate, am.Rho)
+	return fmt.Sprintf("{tput=%.3f, lat=%.3f, wait=%.3f, conc=%.3f, prefill=%.3f, itl=%.3f, ttft=%.3f, maxRate=%.3f, rho=%0.3f}",
+		am.Throughput, am.AvgRespTime, am.AvgWaitTime, am.AvgNumInServ, am.AvgPrefillTime, am.AvgTokenTime, am.AvgTTFT, am.MaxRate, am.Rho)
 }
 
 func (tp *TargetPerf) String() string {

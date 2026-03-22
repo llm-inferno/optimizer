@@ -12,18 +12,17 @@ func main() {
 	maxBatchSize := 256
 	maxQueueSize := 100
 
-	// prefill and decode parameters
-	gamma := float32(86.615)
-	delta := float32(1.446e-03)
+	// performance parameters
 	alpha := float32(6.958)
 	beta := float32(0.042)
+	gamma := float32(0.001)
 
 	// request rate
 	requestRate := float32(25)
 
 	// request size
-	avgInputTokens := 128
-	avgOutputTokens := 512
+	avgInputTokens := float32(128)
+	avgOutputTokens := float32(512)
 
 	// target values
 	targetTTFT := float32(120)
@@ -33,16 +32,12 @@ func main() {
 	// create queue analyzer
 	config := &analyzer.Configuration{
 		MaxBatchSize: maxBatchSize,
+		MaxNumTokens: analyzer.DefaultMaxNumTokens,
 		MaxQueueSize: maxQueueSize,
 		ServiceParms: &analyzer.ServiceParms{
-			Prefill: &analyzer.PrefillParms{
-				Gamma: gamma,
-				Delta: delta,
-			},
-			Decode: &analyzer.DecodeParms{
-				Alpha: alpha,
-				Beta:  beta,
-			},
+			Alpha: alpha,
+			Beta:  beta,
+			Gamma: gamma,
 		},
 	}
 
@@ -62,9 +57,9 @@ func main() {
 	fmt.Printf("requestSize=%v\n", requestSize)
 	fmt.Println()
 
-	queueAnalyzer, err := analyzer.NewQueueAnalyzer(config, requestSize)
+	queueAnalyzer, err := analyzer.NewLLMQueueAnalyzer(config, requestSize)
 	if err != nil {
-		fmt.Printf("NewQueueAnalyzer() failed: %v\n", err)
+		fmt.Printf("NewLLMQueueAnalyzer() failed: %v\n", err)
 		return
 	}
 

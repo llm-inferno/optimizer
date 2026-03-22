@@ -122,7 +122,6 @@ func main() {
 	atTokens := 512
 
 	gammaFactor := float32(8)
-	deltaFactor := float32(32)
 
 	// select using masks
 	useMask := false
@@ -154,13 +153,10 @@ func main() {
 				AccCount:     count[j][i],
 				MaxBatchSize: maxBatchSize[j][i],
 				AtTokens:     atTokens,
-				DecodeParms: config.DecodeParms{
+				PerfParms: config.PerfParms{
 					Alpha: alpha[j][i],
 					Beta:  beta[j][i],
-				},
-				PrefillParms: config.PrefillParms{
 					Gamma: alpha[j][i] * gammaFactor,
-					Delta: beta[j][i] / deltaFactor,
 				},
 			}
 			models.PerfData[k] = pd

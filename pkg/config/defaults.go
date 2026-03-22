@@ -34,3 +34,6 @@ const DefaultServiceClassPriority int = DefaultLowPriority
 
 // default option for allocation under saturated condition
 var DefaultSaturatedAllocationPolicy SaturatedAllocationPolicy = None
+
+// default maximum number of tokens per batch (iteration)
+const DefaultMaxNumTokens = 8192
