@@ -44,7 +44,7 @@ Three solver modes determined by `OptimizerSpec`:
 - **MILP**: Integer programming via lpsolve for globally optimal solution under capacity constraints
 - **Greedy** (default): Sorts servers by priority/cost-delta, allocates greedily until capacity exhausted
 
-### Performance Model (`pkg/analyzer/queueanalyzer.go`)
+### Performance Model (`github.com/llm-inferno/queue-analysis/pkg/analyzer`)
 Uses M/G/c queueing theory to predict per-server metrics given `(accelerator, replicas, batchSize, requestRate)`:
 - **TTFT** (time to first token): includes queueing wait + prefill time
 - **ITL** (inter-token latency): decode time per token
