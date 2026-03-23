@@ -81,7 +81,7 @@ The following data is needed by the Optimizer (Declarations described [types](..
                 "atTokens": 512,
                 "perfParms": {
                     "alpha": 20.58,
-                    "beta": 0.41,
+                    "beta": 0.041,
                     "gamma": 0.00128125
                     }
                 },
@@ -93,7 +93,7 @@ The following data is needed by the Optimizer (Declarations described [types](..
                 "atTokens": 512,
                 "perfParms": {
                     "alpha": 17.15,
-                    "beta": 0.34,
+                    "beta": 0.034,
                     "gamma": 0.0010625
                     }
                 },
@@ -105,7 +105,7 @@ The following data is needed by the Optimizer (Declarations described [types](..
                 "atTokens": 512,
                 "perfParms": {
                     "alpha": 22.84,
-                    "beta": 5.89,
+                    "beta": 0.589,
                     "gamma": 0.01840625
                     }
                 }
@@ -255,15 +255,15 @@ The output of the Optimizer is an Allocation Solution, in addition to updating t
 {
     "allocations": {
         "Premium-granite_13b": {
-            "accelerator": "G2",
-            "numReplicas": 2,
-            "maxBatch": 19,
-            "cost": 46,
-            "itlAverage": 21.16437,
-            "ttftAverage": 102.09766,
+            "accelerator": "MI300X",
+            "numReplicas": 1,
+            "maxBatch": 76,
+            "cost": 65,
+            "itlAverage": 23.95688,
+            "ttftAverage": 127.59338,
             "load": {
-                "arrivalRate": 60,
-                "avgInTokens": 96,
+                "arrivalRate": 120,
+                "avgInTokens": 128,
                 "avgOutTokens": 1024
             }
         }
