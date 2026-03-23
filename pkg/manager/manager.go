@@ -1,7 +1,7 @@
 package manager
 
 import (
-	"github.com/llm-inferno/optimizer/pkg/core"
+	"github.com/llm-inferno/optimizer-light/pkg/core"
 	"github.com/llm-inferno/optimizer/pkg/solver"
 )
 

@@ -6,8 +6,8 @@ import (
 	lpsolveConfig "github.com/llm-inferno/lpsolve/pkg/config"
 	lpsolve "github.com/llm-inferno/lpsolve/pkg/core"
 	lpsolveUtils "github.com/llm-inferno/lpsolve/pkg/utils"
-	"github.com/llm-inferno/optimizer/pkg/config"
-	"github.com/llm-inferno/optimizer/pkg/core"
+	"github.com/llm-inferno/optimizer-light/pkg/config"
+	"github.com/llm-inferno/optimizer-light/pkg/core"
 )
 
 type MILPSolver struct {

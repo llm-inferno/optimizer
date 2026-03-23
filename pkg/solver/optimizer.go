@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/llm-inferno/optimizer/pkg/config"
+	"github.com/llm-inferno/optimizer-light/pkg/config"
 )
 
 type Optimizer struct {

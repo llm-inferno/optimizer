@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
-	"github.com/llm-inferno/optimizer/pkg/core"
+	"github.com/llm-inferno/optimizer-light/pkg/core"
 )
 
 // global pointer to system
