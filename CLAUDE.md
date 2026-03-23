@@ -39,10 +39,10 @@ go run main.go [small|large]
 ## Architecture
 
 ### Solver Selection Logic (`pkg/solver/solver.go`)
-Three solver modes determined by `OptimizerSpec`:
-- **Unlimited**: No capacity constraints — picks minimum-cost feasible allocation per server
-- **MILP**: Integer programming via lpsolve for globally optimal solution under capacity constraints
-- **Greedy** (default): Sorts servers by priority/cost-delta, allocates greedily until capacity exhausted
+Three solver modes determined by `OptimizerSpec`. The local `Solver` embeds `optimizer-light`'s `Solver` and overrides `Solve()` to add the MILP branch; greedy and unlimited are fully delegated to `optimizer-light`:
+- **Unlimited**: No capacity constraints — picks minimum-cost feasible allocation per server (delegated to `optimizer-light`)
+- **MILP**: Integer programming via lpsolve for globally optimal solution under capacity constraints (local `milpsolver.go`)
+- **Greedy** (default): Sorts servers by priority/cost-delta, allocates greedily until capacity exhausted (delegated to `optimizer-light`)
 
 ### Performance Model (`github.com/llm-inferno/queue-analysis/pkg/analyzer`)
 Uses M/G/c queueing theory to predict per-server metrics given `(accelerator, replicas, batchSize, requestRate)`:
@@ -54,7 +54,8 @@ Uses M/G/c queueing theory to predict per-server metrics given `(accelerator, re
 
 These parameters (`alpha`, `beta`, `gamma`, `delta`) are per `(model, accelerator)` pair in `ModelSpec`.
 
-### Core Domain (`pkg/core/`)
+### Core Domain (`github.com/llm-inferno/optimizer-light/pkg/core`)
+The core domain types live in `optimizer-light` and are imported directly. Key types:
 - `system.go`: `TheSystem` singleton — central registry of all entities
 - `allocation.go`: `Allocation` for a server — holds `(accelerator, replicas, batchSize)`; `FeasibleAllocations()` generates and filters candidates via QueueAnalyzer against SLO targets
 - `server.go`: `Server` — maps to a `(serviceClass, model)` pair with a target request rate
@@ -65,8 +66,8 @@ These parameters (`alpha`, `beta`, `gamma`, `delta`) are per `(model, accelerato
 - `statefull.go`: Full CRUD state management + `/optimize` endpoint
 - API spec documented in `rest-server/README.md`
 
-### Configuration Types (`pkg/config/types.go`)
-All JSON data structures: `AcceleratorSpec`, `ModelSpec`, `ServerSpec`, `ServiceClassSpec`, `CapacitySpec`, `OptimizerSpec`, `AllocationSolution`. These are the wire format for both file-based and REST API input/output.
+### Configuration Types (`github.com/llm-inferno/optimizer-light/pkg/config/types.go`)
+All JSON data structures live in `optimizer-light`: `AcceleratorSpec`, `ModelSpec`, `ServerSpec`, `ServiceClassSpec`, `CapacitySpec`, `OptimizerSpec`, `AllocationSolution`. These are the wire format for both file-based and REST API input/output. `OptimizerSpec` includes the MILP-specific fields `MILPSolver`, `UseCplex`, and `Heterogeneous` (ignored by `optimizer-light`).
 
 ## Key Relationships
 
