@@ -5,10 +5,8 @@ go 1.24.0
 require (
 	github.com/gin-gonic/gin v1.11.0
 	github.com/llm-inferno/lpsolve v0.1.0
-	github.com/llm-inferno/optimizer-light v0.0.0-00010101000000-000000000000
+	github.com/llm-inferno/optimizer-light v0.7.0
 )
-
-replace github.com/llm-inferno/optimizer-light => ../optimizer-light
 
 require (
 	github.com/bytedance/gopkg v0.1.3 // indirect
