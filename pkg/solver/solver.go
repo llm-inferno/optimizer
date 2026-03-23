@@ -3,100 +3,76 @@ package solver
 import (
 	"bytes"
 	"fmt"
-	"math"
 
-	"github.com/llm-inferno/optimizer/pkg/config"
-	"github.com/llm-inferno/optimizer/pkg/core"
+	lightsolver "github.com/llm-inferno/optimizer-light/pkg/solver"
+
+	"github.com/llm-inferno/optimizer-light/pkg/config"
+	"github.com/llm-inferno/optimizer-light/pkg/core"
 )
 
-// Solver of allocation assignment problem
+// Solver extends optimizer-light's Solver with MILP support
 type Solver struct {
-	optimizerSpec *config.OptimizerSpec
-
-	// current allocation for all servers
-	currentAllocation map[string]*core.Allocation
-
-	// difference in allocation for all servers
-	diffAllocation map[string]*core.AllocationDiff
+	*lightsolver.Solver
+	spec          *config.OptimizerSpec
+	milpDiffAlloc map[string]*core.AllocationDiff
 }
 
-func NewSolver(optimizerSpec *config.OptimizerSpec) *Solver {
+func NewSolver(spec *config.OptimizerSpec) *Solver {
 	return &Solver{
-		optimizerSpec:     optimizerSpec,
-		currentAllocation: make(map[string]*core.Allocation),
-		diffAllocation:    make(map[string]*core.AllocationDiff),
+		Solver: lightsolver.NewSolver(spec),
+		spec:   spec,
 	}
 }
 
-// Find optimal allocation for all service classes
+// Solve overrides the base solver's Solve to add MILP dispatch
 func (s *Solver) Solve() error {
-	// take snapshot of current allocations
-	s.currentAllocation = make(map[string]*core.Allocation)
+	if !s.spec.MILPSolver {
+		return s.Solver.Solve() // delegate to light solver (greedy or unlimited)
+	}
+
+	// MILP path: snapshot current allocations, solve, then compute diffs
+	prev := make(map[string]*core.Allocation)
 	for serverName, server := range core.GetServers() {
 		if alloc := server.CurAllocation(); alloc != nil {
-			s.currentAllocation[serverName] = alloc
+			prev[serverName] = alloc
 		}
 	}
 
-	// find solution
-	if s.optimizerSpec.Unlimited {
-		s.SolveUnlimited()
-	} else if s.optimizerSpec.MILPSolver {
-		if err := s.SolveMILP(); err != nil {
-			return err
-		}
-	} else {
-		s.SolveGreedy()
+	if err := s.SolveMILP(); err != nil {
+		return err
 	}
 
-	// TODO: cleanup after trying MIP solver
-
-	s.diffAllocation = make(map[string]*core.AllocationDiff)
+	s.milpDiffAlloc = make(map[string]*core.AllocationDiff)
 	for serverName, server := range core.GetServers() {
-		curAlloc := s.currentAllocation[serverName]
-		desiredAlloc := server.Allocation()
-		if allocDiff := core.CreateAllocationDiff(curAlloc, desiredAlloc); allocDiff != nil {
-			s.diffAllocation[serverName] = allocDiff
+		if allocDiff := core.CreateAllocationDiff(prev[serverName], server.Allocation()); allocDiff != nil {
+			s.milpDiffAlloc[serverName] = allocDiff
 		}
 	}
 	return nil
 }
 
-// Find optimal allocations assuming unlimited accelerator capacity
-// (separable objective function: best allocation for each server)
-func (s *Solver) SolveUnlimited() {
-	for _, server := range core.GetServers() {
-		server.RemoveAllocation()
-		// select allocation with minimum value
-		minVal := float32(math.MaxFloat32)
-		var minAlloc *core.Allocation
-		for _, alloc := range server.AllAllocations() {
-			if alloc.Value() < minVal {
-				minVal = alloc.Value()
-				minAlloc = alloc
-			}
-		}
-		if minAlloc != nil {
-			server.SetAllocation(minAlloc)
-		}
-	}
-}
-
 func (s *Solver) SolveMILP() error {
-	mip := NewMILPSolver(s.optimizerSpec)
+	mip := NewMILPSolver(s.spec)
 	return mip.Solve()
 }
 
+// AllocationDiff overrides the base method to return MILP diffs when applicable
 func (s *Solver) AllocationDiff() map[string]*core.AllocationDiff {
-	return s.diffAllocation
+	if s.milpDiffAlloc != nil {
+		return s.milpDiffAlloc
+	}
+	return s.Solver.AllocationDiff()
 }
 
+// String overrides the base method to include MILP diffs
 func (s *Solver) String() string {
-	var b bytes.Buffer
-	b.WriteString("Solver: \n")
-	for serverName, allocDiff := range s.diffAllocation {
-		fmt.Fprintf(&b, "sName=%s, allocDiff=%v \n",
-			serverName, allocDiff)
+	if s.milpDiffAlloc != nil {
+		var b bytes.Buffer
+		b.WriteString("Solver: \n")
+		for serverName, allocDiff := range s.milpDiffAlloc {
+			fmt.Fprintf(&b, "sName=%s, allocDiff=%v \n", serverName, allocDiff)
+		}
+		return b.String()
 	}
-	return b.String()
+	return s.Solver.String()
 }
