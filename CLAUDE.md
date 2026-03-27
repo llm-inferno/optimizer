@@ -34,7 +34,12 @@ cd demos/main
 go run main.go [small|large]
 ```
 
-**Environment variables:** `INFERNO_HOST` (default: `localhost`), `INFERNO_PORT` (default: `8080`)
+## Service environment variables
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `INFERNO_HOST` | REST server listen address | `""` (all interfaces) |
+| `INFERNO_PORT` | REST server listen port | `8080` |
 
 ## Architecture
 
