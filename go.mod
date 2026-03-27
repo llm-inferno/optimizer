@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/gin-gonic/gin v1.11.0
 	github.com/llm-inferno/lpsolve v0.1.0
-	github.com/llm-inferno/optimizer-light v0.7.0
+	github.com/llm-inferno/optimizer-light v0.7.1
 )
 
 require (
