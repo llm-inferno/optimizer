@@ -1,5 +1,5 @@
 # Use a multi-stage build
-FROM golang:1.23-bookworm AS builder
+FROM golang:1.24-bookworm AS builder
 
 # Install the lpsolve package
 RUN apt-get update && apt-get install -y liblpsolve55-dev
