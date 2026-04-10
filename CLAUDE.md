@@ -49,6 +49,8 @@ Three solver modes determined by `OptimizerSpec`. The local `Solver` embeds `opt
 - **MILP**: Integer programming via lpsolve for globally optimal solution under capacity constraints (local `milpsolver.go`)
 - **Greedy** (default): Sorts servers by priority/cost-delta, allocates greedily until capacity exhausted (delegated to `optimizer-light`)
 
+When `optimizer-light`'s `Solve()` returns an error (e.g., no feasible allocation for one or more servers due to zero perfParms or infeasible SLOs), the error propagates through `Manager.Optimize()` and the REST handler returns HTTP 404.
+
 ### Performance Model (`github.com/llm-inferno/queue-analysis/pkg/analyzer`)
 Uses M/G/c queueing theory to predict per-server metrics given `(accelerator, replicas, batchSize, requestRate)`:
 - **TTFT** (time to first token): includes queueing wait + prefill time
