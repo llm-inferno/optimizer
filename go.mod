@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/gin-gonic/gin v1.11.0
 	github.com/llm-inferno/lpsolve v0.1.0
-	github.com/llm-inferno/optimizer-light v0.7.2
+	github.com/llm-inferno/optimizer-light v0.7.4
 )
 
 require (
@@ -43,5 +43,3 @@ require (
 	golang.org/x/tools v0.38.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )
-
-replace github.com/llm-inferno/optimizer-light => ../optimizer-light
